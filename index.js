@@ -9,12 +9,14 @@ const Ps3Plugin     = require('./plugins/ps3');
 const VjoyPlugin    = require('./plugins/vjoy');
 const FiltersPlugin = require('./plugins/filters');
 const EvdevPlugin   = require('./plugins/evdev');
+const MousePlugin   = require('./plugins/mouse');
 
 const PLUGINS = [
     new Ps3Plugin(),
     new VjoyPlugin(),
     new FiltersPlugin(),
     new EvdevPlugin(),
+    new MousePlugin(),
 ];
 
 // Construir sandbox a partir de los globales de cada plugin
