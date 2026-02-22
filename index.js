@@ -68,6 +68,10 @@ async function main() {
     for (const plugin of PLUGINS) {
         if (typeof plugin.on === 'function') plugin.on('data', onData);
     }
+
+    // Warmup: ejecuta loop() una vez para que los scripts que acceden a joystick[N]
+    // dentro de loop() (en lugar de en el nivel superior) abran el dispositivo.
+    setImmediate(onData);
 }
 
 process.on('SIGINT', async () => {
