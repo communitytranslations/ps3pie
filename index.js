@@ -8,11 +8,13 @@ const vm   = require('vm');
 const Ps3Plugin     = require('./plugins/ps3');
 const VjoyPlugin    = require('./plugins/vjoy');
 const FiltersPlugin = require('./plugins/filters');
+const EvdevPlugin   = require('./plugins/evdev');
 
 const PLUGINS = [
     new Ps3Plugin(),
     new VjoyPlugin(),
     new FiltersPlugin(),
+    new EvdevPlugin(),
 ];
 
 // Construir sandbox a partir de los globales de cada plugin
@@ -61,8 +63,9 @@ async function main() {
 
     console.info('Ready');
 
-    const inputPlugin = PLUGINS.find(p => typeof p.on === 'function');
-    inputPlugin.on('data', onData);
+    for (const plugin of PLUGINS) {
+        if (typeof plugin.on === 'function') plugin.on('data', onData);
+    }
 }
 
 process.on('SIGINT', async () => {

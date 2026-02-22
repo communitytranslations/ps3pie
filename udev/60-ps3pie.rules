@@ -1,0 +1,19 @@
+# ps3pie udev rules — grant access to logged-in user (no root required)
+#
+# Install (once, as root):
+#   sudo cp udev/60-ps3pie.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger
+#
+# TAG+="uaccess" grants access to the user with an active local session
+# (managed by systemd-logind), without changing global permissions or
+# adding the user to any group.
+
+# uinput: write virtual devices (keyboard/joystick)
+SUBSYSTEM=="misc", KERNEL=="uinput", OPTIONS+="static_node=uinput", TAG+="uaccess"
+
+# evdev: read generic joysticks and gamepads
+SUBSYSTEM=="input", KERNEL=="event*", TAG+="uaccess"
+
+# hidraw: direct HID access (PS3 controller)
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", TAG+="uaccess"
