@@ -1,115 +1,79 @@
 #!/usr/bin/env node
-const fs = require("fs");
-const path = require("path");
-const ps3 = require("./ps3.js");
-const uinput = require("./uinput.js");
-const vm = require("vm");
-const _ = require("lodash");
+'use strict';
 
-const keyboardEvents = [];
-const keyboard = {};
-const keyboardPrev = {};
-const vjoyA = {};
-const vjoyAPrev = {};
-const vjoyB = {};
-const vjoyBPrev = {};
+const fs   = require('fs');
+const path = require('path');
+const vm   = require('vm');
 
-var scriptGlobal = {
+const Ps3Plugin     = require('./plugins/ps3');
+const VjoyPlugin    = require('./plugins/vjoy');
+const FiltersPlugin = require('./plugins/filters');
+
+const PLUGINS = [
+    new Ps3Plugin(),
+    new VjoyPlugin(),
+    new FiltersPlugin(),
+];
+
+// Construir sandbox a partir de los globales de cada plugin
+const sandbox = {
     console,
-    exports: {},
-    module: {
-        exports: {}
-    },
-
-    keyboard,
-    keyboardEvents,
-    vjoyA,
-    vjoyB,
-    ps3: {}
+    exports:  {},
+    module:   { exports: {} },
 };
-scriptGlobal.exports = scriptGlobal.module.exports;
+sandbox.exports = sandbox.module.exports;
 
-var running;
-async function onPs3Data(data) {
+for (const plugin of PLUGINS) {
+    if (typeof plugin.createGlobals === 'function') {
+        Object.assign(sandbox, plugin.createGlobals());  // multi-global
+    } else if (plugin.globalName) {
+        sandbox[plugin.globalName] = plugin.createGlobal();
+    }
+}
+
+// Guard contra ejecuciones concurrentes
+let running = false;
+
+function onData() {
     if (running) return;
     running = true;
     try {
-        scriptGlobal.ps3 = data;
-        scriptGlobal.module.exports.loop()
-
-        for (const code of keyboardEvents) {
-            if (typeof(code) === "string") {
-                await uinput.keyPress(code);
-            } else {
-                await uinput.keyCombo(code);
-            }
-        }
-        keyboardEvents.splice(0, keyboardEvents.length);
-
-        for (const code in keyboard) {
-            const nextValue = keyboard[code];
-            const prevValue = keyboardPrev[code];
-            if (nextValue === prevValue) continue;
-
-            await uinput.key(code, nextValue);
-            keyboardPrev[code] = nextValue;
-        }
-
-        for (const code in vjoyA) {
-            const nextValue = vjoyA[code];
-            const prevValue = vjoyAPrev[code];
-            if (nextValue === prevValue) continue;
-
-            const value = nextValue * 500 + 500;
-
-            await uinput.axis(code, value);
-            vjoyAPrev[code] = nextValue;
-        }
-
-        for (const code in vjoyB) {
-            const nextValue = vjoyB[code];
-            const prevValue = vjoyBPrev[code];
-            if (nextValue === prevValue) continue;
-
-            await uinput.button(code, nextValue);
-            vjoyBPrev[code] = nextValue;
-        }
-
-        await uinput.sync();
+        for (const plugin of PLUGINS) plugin.doBeforeNextExecute();
+        sandbox.module.exports.loop();
+        for (const plugin of PLUGINS) plugin.doAfterExecute();
     } catch (err) {
-        console.log(err)
+        console.log(err);
     } finally {
         running = false;
     }
 }
 
 async function main() {
-    await ps3.setup();
+    for (const plugin of PLUGINS) {
+        await plugin.start();
+    }
 
-    await uinput.setup();
+    const scriptPath = process.argv[2]
+        ? path.resolve(process.argv[2])
+        : path.join(__dirname, 'scripts/descent.js');
+    const scriptCode = fs.readFileSync(scriptPath);
+    new vm.Script(scriptCode).runInNewContext(sandbox);
 
-    console.info("Ready");
+    console.info('Ready');
 
-    const scriptCode = fs.readFileSync(path.join(__dirname, "scripts/descent.js"));
-    const script = new vm.Script(scriptCode);
-    script.runInNewContext(scriptGlobal);
-
-    ps3.on("data", onPs3Data);
+    const inputPlugin = PLUGINS.find(p => typeof p.on === 'function');
+    inputPlugin.on('data', onData);
 }
 
-function mainSync() {
-    (async() => {
-        try {
-            await main();
-        } catch (err) {
-            console.log(err);
-        }
-    })();
-}
-
-process.on("SIGINT", function() {
-    uinput.teardown();
+process.on('SIGINT', async () => {
+    for (const plugin of PLUGINS) await plugin.stop();
     process.exit();
 });
 
-mainSync();
+(async () => {
+    try {
+        await main();
+    } catch (err) {
+        console.log(err);
+    }
+})();
