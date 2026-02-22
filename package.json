@@ -10,9 +10,8 @@
   "author": "David Meyer",
   "license": "GPL-3.0-only",
   "dependencies": {
-    "ioctl": "^2.0.2",
+    "koffi": "^2.9.0",
     "lodash": "^4.17.21",
-    "node-hid": "^2.1.1",
-    "uinput2": "^1.0.2"
+    "node-hid": "^3.3.0"
   }
 }

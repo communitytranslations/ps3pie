@@ -114,7 +114,7 @@ async function setup() {
     var waiting = false;
     while (!device) {
         try {
-            var devices = HID.devices();
+            var devices = await HID.devicesAsync();
             var deviceInfo = _.find(devices, d => d.manufacturer === "Sony" && d.product === "PLAYSTATION(R)3 Controller");
 
             if (!deviceInfo) {

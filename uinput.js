@@ -1,146 +1,231 @@
-const ioctl = require("ioctl");
-const UInput = require("uinput2");
-const _ = require("lodash");
+'use strict';
 
-// Poly-fill some missing constants:
-UInput.BTN_DPAD_UP = 0x220;
-UInput.BTN_DPAD_DOWN = 0x221;
-UInput.BTN_DPAD_LEFT = 0x222;
-UInput.BTN_DPAD_RIGHT = 0x223;
+const koffi = require('koffi');
+const fs = require('fs');
 
-const keys = {
-    esc: "KEY_ESC",
-    one: "KEY_1",
-    two: "KEY_2",
-    three: "KEY_3",
-    four: "KEY_4",
-    five: "KEY_5",
-    six: "KEY_6",
-    seven: "KEY_7",
-    eight: "KEY_8",
-    nine: "KEY_9",
-    zero: "KEY_0",
-    tab: "KEY_TAB",
-    enter: "KEY_ENTER",
-    shift: "KEY_RIGHTSHIFT",
-    space: "KEY_SPACE",
-    f1: "KEY_F1",
-    f2: "KEY_F2",
-    f3: "KEY_F3",
-    ralt: "KEY_RIGHTALT",
-    home: "KEY_HOME",
-    up: "KEY_UP",
-    pageUp: "KEY_PAGEUP",
-    left: "KEY_LEFT",
-    right: "KEY_RIGHT",
-    end: "KEY_END",
-    down: "KEY_DOWN",
-    pageDown: "KEY_PAGEDOWN"
+// --- Linux input constants ---
+const EV_SYN = 0;
+const EV_KEY = 1;
+const EV_ABS = 3;
+const SYN_REPORT = 0;
+const BUS_VIRTUAL = 6;
+
+// uinput ioctl request codes (from linux/uinput.h)
+// _IO('U', 1)          = (0 << 30) | (0x55 << 8) | 1
+// _IOW('U', N, int)    = (1 << 30) | (4 << 16) | (0x55 << 8) | N
+const UI_DEV_CREATE  = 0x5501;
+const UI_DEV_DESTROY = 0x5502;
+const UI_SET_EVBIT   = 0x40045564;
+const UI_SET_KEYBIT  = 0x40045565;
+const UI_SET_ABSBIT  = 0x40045567;
+
+// --- Key codes (linux/input-event-codes.h) ---
+const keyCodes = {
+    esc:      1,
+    one:      2,
+    two:      3,
+    three:    4,
+    four:     5,
+    five:     6,
+    six:      7,
+    seven:    8,
+    eight:    9,
+    nine:     10,
+    zero:     11,
+    tab:      15,
+    enter:    28,
+    shift:    54,
+    space:    57,
+    f1:       59,
+    f2:       60,
+    f3:       61,
+    ralt:     100,
+    home:     102,
+    up:       103,
+    pageUp:   104,
+    left:     105,
+    right:    106,
+    end:      107,
+    down:     108,
+    pageDown: 109,
 };
 
-const buttons = {
-    a: "BTN_A",
-    b: "BTN_B",
-    x: "BTN_X",
-    y: "BTN_Y",
-    tl: "BTN_TL",
-    tr: "BTN_TR",
-    tl2: "BTN_TL2",
-    tr2: "BTN_TR2",
-    select: "BTN_SELECT",
-    start: "BTN_START",
-    mode: "BTN_MODE",
-    thumbl: "BTN_THUMBL",
-    thumbr: "BTN_THUMBR",
-    up: "BTN_DPAD_UP",
-    down: "BTN_DPAD_DOWN",
-    left: "BTN_DPAD_LEFT",
-    right: "BTN_DPAD_RIGHT"
+// --- Button codes (BTN_*) ---
+const buttonCodes = {
+    a:      0x130,
+    b:      0x131,
+    x:      0x133,
+    y:      0x134,
+    tl:     0x136,
+    tr:     0x137,
+    tl2:    0x138,
+    tr2:    0x139,
+    select: 0x13a,
+    start:  0x13b,
+    mode:   0x13c,
+    thumbl: 0x13d,
+    thumbr: 0x13e,
+    up:     0x220,
+    down:   0x221,
+    left:   0x222,
+    right:  0x223,
 };
 
-const axes = {
-    x: "ABS_X",
-    y: "ABS_Y",
-    z: "ABS_Z",
-    rx: "ABS_RX",
-    ry: "ABS_RY",
-    rz: "ABS_RZ"
+// --- Axis codes (ABS_*) ---
+const axisCodes = {
+    x:  0,
+    y:  1,
+    z:  2,
+    rx: 3,
+    ry: 4,
+    rz: 5,
 };
 
-const SETUP_OPTIONS = {
-    UI_SET_EVBIT: [
-        UInput.EV_KEY,
-        UInput.EV_ABS,
-    ],
-    UI_SET_KEYBIT: _([_.values(keys), _.values(buttons)]).flatten().map(v => UInput[v]).value(),
-    UI_SET_ABSBIT: _(axes).values().map(v => UInput[v]).value()
-};
+// --- koffi FFI: ioctl from libc ---
+const lib = koffi.load('libc.so.6');
+// int ioctl(int fd, unsigned long request, long value)
+// Using fixed 3-arg form (not variadic) — sufficient for all uinput ioctls.
+const ioctl = lib.func('ioctl', 'int', ['int', 'ulong', 'long']);
 
-const CREATE_OPTIONS = {
-    name: "ps3pie",
-    id: {
-        busType: UInput.BUS_VIRTUAL,
-        vendor: 0x1,
-        product: 0x1,
-        version: 1
-    },
-    absMax: _(axes).values().map(v => UInput.Abs(UInput[v], 1000)).value(),
-    absMin: _(axes).values().map(v => UInput.Abs(UInput[v], 0)).value()
-};
+// --- Struct builders ---
 
+// uinput_user_dev: 1116 bytes (linux/uinput.h)
+//   offset   0: name[80]        char
+//   offset  80: input_id        { bustype, vendor, product, version } uint16×4
+//   offset  88: ff_effects_max  uint32 = 0
+//   offset  92: absmax[64]      int32×64
+//   offset 348: absmin[64]      int32×64
+//   offset 604: absfuzz[64]     int32×64 (zeros)
+//   offset 860: absflat[64]     int32×64 (zeros)
+function makeUinputUserDev(name, absMax, absMin) {
+    const buf = Buffer.alloc(1116, 0);
+    buf.write(name, 0, 'ascii');
+    buf.writeUInt16LE(BUS_VIRTUAL, 80);  // bustype
+    buf.writeUInt16LE(0x1, 82);          // vendor
+    buf.writeUInt16LE(0x1, 84);          // product
+    buf.writeUInt16LE(1, 86);            // version
+    // ff_effects_max at 88 = 0 (already zeroed)
+    for (const [code, max] of Object.entries(absMax)) {
+        buf.writeInt32LE(max, 92 + parseInt(code) * 4);
+    }
+    for (const [code, min] of Object.entries(absMin)) {
+        buf.writeInt32LE(min, 348 + parseInt(code) * 4);
+    }
+    return buf;
+}
+
+// input_event: 24 bytes
+//   offset  0: timeval (16 bytes, zeros)
+//   offset 16: type   uint16
+//   offset 18: code   uint16
+//   offset 20: value  int32
+function makeInputEvent(type, code, value) {
+    const buf = Buffer.alloc(24, 0);
+    buf.writeUInt16LE(type, 16);
+    buf.writeUInt16LE(code, 18);
+    buf.writeInt32LE(value, 20);
+    return buf;
+}
+
+// --- State ---
+var fd = -1;
+
+function writeEvent(type, code, value) {
+    const buf = makeInputEvent(type, code, value);
+    fs.writeSync(fd, buf, 0, buf.length);
+}
+
+// --- Setup / teardown ---
 var setupPromise;
-var uinput;
 
 async function setup() {
     console.info("Setting up uinput...");
 
-    uinput = await UInput.setup(SETUP_OPTIONS);
+    fd = fs.openSync('/dev/uinput', fs.constants.O_WRONLY);
 
-    await uinput.create(CREATE_OPTIONS);
+    // Enable event types
+    ioctl(fd, UI_SET_EVBIT, EV_KEY);
+    ioctl(fd, UI_SET_EVBIT, EV_ABS);
+
+    // Enable key codes
+    for (const code of Object.values(keyCodes)) {
+        ioctl(fd, UI_SET_KEYBIT, code);
+    }
+
+    // Enable button codes
+    for (const code of Object.values(buttonCodes)) {
+        ioctl(fd, UI_SET_KEYBIT, code);
+    }
+
+    // Enable axis codes
+    for (const code of Object.values(axisCodes)) {
+        ioctl(fd, UI_SET_ABSBIT, code);
+    }
+
+    // Build absmax / absmin maps keyed by axis code number
+    const absMax = {};
+    const absMin = {};
+    for (const code of Object.values(axisCodes)) {
+        absMax[code] = 1000;
+        absMin[code] = 0;
+    }
+
+    // Write device descriptor and create
+    const devBuf = makeUinputUserDev('ps3pie', absMax, absMin);
+    fs.writeSync(fd, devBuf, 0, devBuf.length);
+    ioctl(fd, UI_DEV_CREATE, 0);
+
+    console.info("uinput device created");
 }
 
 function setupSync() {
-    setupPromise = setup()
-    return setupPromise
+    setupPromise = setup();
+    return setupPromise;
 }
 
+// --- Public API (interface identical to original uinput.js) ---
 module.exports = {
     setup() {
-        return setupPromise || setupSync()
+        return setupPromise || setupSync();
     },
 
     teardown() {
-        if (uinput) {
-            console.log("Destroying uinput device...")
-            if (ioctl(uinput.stream.fd, UInput.UI_DEV_DESTROY)) {
-                console.log("Could not destroy uinput device");
-            }
-            uinput = null
+        if (fd >= 0) {
+            console.log("Destroying uinput device...");
+            ioctl(fd, UI_DEV_DESTROY, 0);
+            fs.closeSync(fd);
+            fd = -1;
         }
     },
 
     async keyPress(code) {
-        await uinput.sendEvent(UInput.EV_KEY, UInput[keys[code]], 1);
-        await uinput.sendEvent(UInput.EV_KEY, UInput[keys[code]], 0);
+        writeEvent(EV_KEY, keyCodes[code], 1);
+        writeEvent(EV_KEY, keyCodes[code], 0);
     },
 
     async keyCombo(codes) {
-        await uinput.emitCombo(_.map(codes, c => UInput[keys[c]]));
+        for (const c of codes) {
+            writeEvent(EV_KEY, keyCodes[c], 1);
+        }
+        for (const c of codes) {
+            writeEvent(EV_KEY, keyCodes[c], 0);
+        }
+        writeEvent(EV_SYN, SYN_REPORT, 0);
     },
 
     async key(code, value) {
-        await uinput.sendEvent(UInput.EV_KEY, UInput[keys[code]], value);
+        writeEvent(EV_KEY, keyCodes[code], value);
     },
 
     async button(code, value) {
-        await uinput.sendEvent(UInput.EV_KEY, UInput[buttons[code]], value);
+        writeEvent(EV_KEY, buttonCodes[code], value);
     },
 
     async axis(code, value) {
-        await uinput.sendEvent(UInput.EV_ABS, UInput[axes[code]], value);
+        writeEvent(EV_ABS, axisCodes[code], value);
     },
 
     async sync() {
-        await uinput.sendEvent(UInput.EV_SYN, UInput.SYN_REPORT, 0);
-    }
+        writeEvent(EV_SYN, SYN_REPORT, 0);
+    },
 };
