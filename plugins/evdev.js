@@ -16,6 +16,7 @@
 //                  THUMBL=0x13d, THUMBR=0x13e
 
 const fs           = require('fs');
+const koffi        = require('koffi');
 const EventEmitter = require('events');
 const Plugin       = require('../plugin');
 
@@ -28,6 +29,13 @@ const POLL_MS  = 4;   // 250 Hz — suficiente para cualquier gamepad (típico: 
 
 // O_NONBLOCK: fs.readSync retorna EAGAIN si no hay datos en lugar de bloquear.
 const O_RDONLY_NONBLOCK = fs.constants.O_RDONLY | fs.constants.O_NONBLOCK;
+
+// EVIOCGRAB = _IOW('E', 0x90, int) = 0x40044590
+// Concede acceso exclusivo al dispositivo: ningún otro proceso recibe sus eventos.
+const EVIOCGRAB = 0x40044590;
+
+const lib   = koffi.load('libc.so.6');
+const ioctl = lib.func('ioctl', 'int', ['int', 'ulong', 'long']);
 
 class EvdevDevice {
     constructor(n) {
@@ -47,6 +55,12 @@ class EvdevDevice {
         } catch (err) {
             console.warn(`[evdev] Cannot open ${this._path}: ${err.message}`);
             return;
+        }
+        const ret = ioctl(this._fd, EVIOCGRAB, 1);
+        if (ret < 0) {
+            console.warn(`[evdev] EVIOCGRAB failed on ${this._path} (device may be grabbed by another process)`);
+        } else {
+            console.info(`[evdev] Grabbed ${this._path} exclusively`);
         }
         this._timer = setInterval(() => this._poll(), POLL_MS);
     }
@@ -98,6 +112,7 @@ class EvdevDevice {
         if (this._fd >= 0) {
             const fd = this._fd;
             this._fd = -1;
+            ioctl(fd, EVIOCGRAB, 0);      // libera el grab antes de cerrar (explícito)
             fs.closeSync(fd);             // seguro: no hay lecturas concurrentes en thread pool
         }
         this._partial = null;
