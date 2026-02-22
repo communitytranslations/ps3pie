@@ -21,7 +21,7 @@ class Ps3Plugin extends Plugin {
             this._pending = data;
             this._emitter.emit('data');
         });
-        await ps3Hid.setup();
+        ps3Hid.setup();  // fire-and-forget — connects whenever a PS3 controller is available
     }
 
     doBeforeNextExecute() {
