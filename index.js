@@ -12,6 +12,9 @@ const EvdevPlugin   = require('./plugins/evdev');
 const MousePlugin   = require('./plugins/mouse');
 const AndroidPlugin = require('./plugins/android');
 const IosPlugin     = require('./plugins/ios');
+const MidiPlugin    = require('./plugins/midi');
+const AhrsPlugin    = require('./plugins/ahrs');
+const FreeImuPlugin = require('./plugins/freeimu');
 
 const PLUGINS = [
     new Ps3Plugin(),
@@ -21,6 +24,9 @@ const PLUGINS = [
     new MousePlugin(),
     new AndroidPlugin(),
     new IosPlugin(),
+    new MidiPlugin(),
+    new AhrsPlugin(),
+    new FreeImuPlugin(),
 ];
 
 // Construir sandbox a partir de los globales de cada plugin

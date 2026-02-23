@@ -12,6 +12,8 @@
   "dependencies": {
     "koffi": "^2.9.0",
     "lodash": "^4.17.21",
-    "node-hid": "^3.3.0"
+    "midi": "^2.0.0",
+    "node-hid": "^3.3.0",
+    "serialport": "^13.0.0"
   }
 }
