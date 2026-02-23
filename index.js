@@ -10,6 +10,8 @@ const VjoyPlugin    = require('./plugins/vjoy');
 const FiltersPlugin = require('./plugins/filters');
 const EvdevPlugin   = require('./plugins/evdev');
 const MousePlugin   = require('./plugins/mouse');
+const AndroidPlugin = require('./plugins/android');
+const IosPlugin     = require('./plugins/ios');
 
 const PLUGINS = [
     new Ps3Plugin(),
@@ -17,6 +19,8 @@ const PLUGINS = [
     new FiltersPlugin(),
     new EvdevPlugin(),
     new MousePlugin(),
+    new AndroidPlugin(),
+    new IosPlugin(),
 ];
 
 // Construir sandbox a partir de los globales de cada plugin
