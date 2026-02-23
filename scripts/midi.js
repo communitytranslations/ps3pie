@@ -54,10 +54,11 @@ module.exports = {
 
         // One-shot keyboard shortcuts on specific notes
         // (fires once per Note On message — safe because the loop only runs on new MIDI events)
+        // Key names must be from the supported set in uinput.js (see README)
         if (controller.status === NOTE_ON) {
-            if (controller.note === 48) keyboardEvents.push('enter');    // C3
-            if (controller.note === 50) keyboardEvents.push('escape');   // D3
-            if (controller.note === 52) keyboardEvents.push(['ctrl', 's']); // E3 → Ctrl+S
+            if (controller.note === 48) keyboardEvents.push('enter');         // C3
+            if (controller.note === 50) keyboardEvents.push('esc');           // D3
+            if (controller.note === 52) keyboardEvents.push(['ralt', 'f2']); // E3
         }
     }
 };

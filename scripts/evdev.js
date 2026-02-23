@@ -30,23 +30,26 @@ module.exports = {
         vjoyA.z  = filters.ensureMapRange(pad.axes[2] ?? 0, 0, 255, -1, 1);
         vjoyA.rz = filters.ensureMapRange(pad.axes[5] ?? 0, 0, 255, -1, 1);
 
-        // D-pad (hat switches)
-        vjoyA.hatX = pad.axes[16] ?? 0;   // -1=left, 0=center, 1=right
-        vjoyA.hatY = pad.axes[17] ?? 0;   // -1=up,   0=center, 1=down
+        // D-pad (hat switches) → vjoyB dpad buttons
+        // Hat axes: -1=negative direction, 0=center, 1=positive direction
+        vjoyB.left  = (pad.axes[16] ?? 0) < 0 ? 1 : 0;
+        vjoyB.right = (pad.axes[16] ?? 0) > 0 ? 1 : 0;
+        vjoyB.up    = (pad.axes[17] ?? 0) < 0 ? 1 : 0;
+        vjoyB.down  = (pad.axes[17] ?? 0) > 0 ? 1 : 0;
 
         // Face buttons
         vjoyB.a = pad.buttons[0x130] ?? 0;   // BTN_SOUTH (A / Cross)
         vjoyB.b = pad.buttons[0x131] ?? 0;   // BTN_EAST  (B / Circle)
-        vjoyB.x = pad.buttons[0x133] ?? 0;   // BTN_NORTH (X / Triangle)
-        vjoyB.y = pad.buttons[0x134] ?? 0;   // BTN_WEST  (Y / Square)
+        vjoyB.x = pad.buttons[0x133] ?? 0;   // BTN_NORTH (Y / Triangle)
+        vjoyB.y = pad.buttons[0x134] ?? 0;   // BTN_WEST  (X / Square)
 
         // Shoulder buttons
-        vjoyB.lb = pad.buttons[0x136] ?? 0;  // BTN_TL  (L1 / LB)
-        vjoyB.rb = pad.buttons[0x137] ?? 0;  // BTN_TR  (R1 / RB)
+        vjoyB.tl = pad.buttons[0x136] ?? 0;  // BTN_TL  (L1 / LB)
+        vjoyB.tr = pad.buttons[0x137] ?? 0;  // BTN_TR  (R1 / RB)
 
         // Stick clicks
-        vjoyB.l3 = pad.buttons[0x13d] ?? 0;  // BTN_THUMBL
-        vjoyB.r3 = pad.buttons[0x13e] ?? 0;  // BTN_THUMBR
+        vjoyB.thumbl = pad.buttons[0x13d] ?? 0;  // BTN_THUMBL (L3)
+        vjoyB.thumbr = pad.buttons[0x13e] ?? 0;  // BTN_THUMBR (R3)
 
         // Menu buttons
         vjoyB.select = pad.buttons[0x13a] ?? 0;  // BTN_SELECT (Back)

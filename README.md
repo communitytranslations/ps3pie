@@ -65,8 +65,8 @@ pad.axes[17]         // ABS_HAT0Y  (-1=up,   0=center, 1=down)
 
 pad.buttons[0x130]   // BTN_SOUTH  (A / Cross)
 pad.buttons[0x131]   // BTN_EAST   (B / Circle)
-pad.buttons[0x133]   // BTN_NORTH  (X / Triangle)
-pad.buttons[0x134]   // BTN_WEST   (Y / Square)
+pad.buttons[0x133]   // BTN_NORTH  (Y / Triangle)
+pad.buttons[0x134]   // BTN_WEST   (X / Square)
 pad.buttons[0x136]   // BTN_TL     (L1 / LB)
 pad.buttons[0x137]   // BTN_TR     (R1 / RB)
 pad.buttons[0x138]   // BTN_TL2    (L2 digital)
@@ -189,21 +189,39 @@ PS3PIE_FREEIMU_PORT=/dev/ttyUSB1 node index.js scripts/imu.js
 
 ### `vjoyA` — Virtual joystick axes
 
+Valid axis names: `x`, `y`, `z`, `rx`, `ry`, `rz`. Values in `[-1, 1]` (scaled to `[0, 1000]` internally).
+
 ```js
-vjoyA.x  = 0.5;    // [-1, 1]
-vjoyA.y  = -1.0;
-vjoyA.rx = 0.0;
-vjoyA.ry = 0.0;
+vjoyA.x  = 0.5;    // left stick horizontal
+vjoyA.y  = 0.0;    // left stick vertical
+vjoyA.rx = 0.0;    // right stick horizontal
+vjoyA.ry = 0.0;    // right stick vertical
 vjoyA.z  = 0.0;    // left trigger
 vjoyA.rz = 0.0;    // right trigger
 ```
 
 ### `vjoyB` — Virtual joystick buttons
 
+Valid button names (from `uinput.js`):
+
 ```js
-vjoyB.a = 1;    // any string key, any value 0/1
-vjoyB.b = 0;
-vjoyB.start = pad.buttons[0x13b];
+vjoyB.a      // BTN_A      0x130
+vjoyB.b      // BTN_B      0x131
+vjoyB.x      // BTN_X      0x133
+vjoyB.y      // BTN_Y      0x134
+vjoyB.tl     // BTN_TL     0x136  (L1 / LB)
+vjoyB.tr     // BTN_TR     0x137  (R1 / RB)
+vjoyB.tl2    // BTN_TL2    0x138  (L2 digital)
+vjoyB.tr2    // BTN_TR2    0x139  (R2 digital)
+vjoyB.select // BTN_SELECT 0x13a
+vjoyB.start  // BTN_START  0x13b
+vjoyB.mode   // BTN_MODE   0x13c  (Guide / PS / Xbox)
+vjoyB.thumbl // BTN_THUMBL 0x13d  (L3)
+vjoyB.thumbr // BTN_THUMBR 0x13e  (R3)
+vjoyB.up     // BTN_DPAD_UP    0x220
+vjoyB.down   // BTN_DPAD_DOWN  0x221
+vjoyB.left   // BTN_DPAD_LEFT  0x222
+vjoyB.right  // BTN_DPAD_RIGHT 0x223
 ```
 
 ### `mouse` — Virtual mouse
@@ -221,16 +239,31 @@ mouse.middle = 0;
 
 ### `keyboard` — Sustained key state
 
+Key names must be from the supported set (see below). Key is held while value is `1`.
+
 ```js
-keyboard['w'] = 1;     // key held while value is 1
+keyboard['space'] = 1;
 keyboard['shift'] = 0;
 ```
 
 ### `keyboardEvents` — One-shot key presses
 
 ```js
-keyboardEvents.push('enter');          // single key
-keyboardEvents.push(['ctrl', 's']);    // combo
+keyboardEvents.push('enter');           // single key
+keyboardEvents.push(['ralt', 'f2']);    // combo (all keys pressed then released together)
+```
+
+### Supported key names
+
+Both `keyboard` and `keyboardEvents` only accept names defined in `uinput.js`:
+
+```
+esc   one  two  three  four  five  six  seven  eight  nine  zero
+tab   enter  shift  space
+f1   f2   f3
+ralt
+home  end  pageUp  pageDown
+up   down  left  right
 ```
 
 ## Filters API
