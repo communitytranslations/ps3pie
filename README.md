@@ -85,14 +85,24 @@ The device is grabbed exclusively (`EVIOCGRAB`) — the physical gamepad is hidd
 Reads the PS3 controller directly via `/dev/hidrawX`. Connects automatically when the controller is plugged in (does not block startup).
 
 ```js
-ps3.lx, ps3.ly        // left stick  [-1, 1]
-ps3.rx, ps3.ry        // right stick [-1, 1]
-ps3.cross             // face buttons [0, 1]
-ps3.circle, ps3.square, ps3.triangle
+// Sticks [-1, 1]
+ps3.leftStickX,  ps3.leftStickY
+ps3.rightStickX, ps3.rightStickY
+
+// Digital buttons [0, 1]
+ps3.cross, ps3.circle, ps3.square, ps3.triangle
 ps3.l1, ps3.r1, ps3.l2, ps3.r2
-ps3.l3, ps3.r3        // stick clicks
+ps3.leftStickButton, ps3.rightStickButton   // L3 / R3
 ps3.select, ps3.start, ps3.ps
-ps3.up, ps3.down, ps3.left, ps3.right  // d-pad
+ps3.up, ps3.down, ps3.left, ps3.right       // d-pad
+
+// Pressure-sensitive analog buttons [0, 1]
+ps3.crossAnalog,    ps3.circleAnalog
+ps3.squareAnalog,   ps3.triangleAnalog
+ps3.l1Analog,       ps3.r1Analog
+ps3.l2Analog,       ps3.r2Analog
+ps3.upAnalog,       ps3.downAnalog
+ps3.leftAnalog,     ps3.rightAnalog
 ```
 
 ### `android[N]` — Android IMU (UDP)
