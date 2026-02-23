@@ -1,3 +1,14 @@
+'use strict';
+
+// PS3 DualShock 3 → virtual joystick + keyboard mapping for Descent / Overload
+//
+// Shift modifiers (hold button, press another):
+//   PS     + face/dpad → various keyboard shortcuts (esc, tab, page up/down, home/end)
+//   Start  + dpad      → weapon select (1-4) / secondary
+//   Select + face      → weapon select (6-9) / zero
+//
+// Hold PS+Start+Select simultaneously to re-calibrate stick centers.
+
 const buttonMappings = {
     r1: "a",
     r2: "b",
@@ -16,88 +27,86 @@ const keyMappings = {
     square: "space"
 };
 
-var shiftState;
-var shiftAction;
+let shiftState;
+let shiftAction;
 
 const shiftMappings = {
     ps: {
-        cross: [ "ralt", "f2" ],
-        circle: [ "ralt", "f3" ],
-        square: "f2",
+        cross:    [ "ralt", "f2" ],
+        circle:   [ "ralt", "f3" ],
+        square:   "f2",
         triangle: "tab",
-        left: [ "shift", "f1" ],
-        right: [ "shift", "f2" ],
-
-        up: "pageUp",
-        down: "pageDown",
-        left: "home",
-        right: "end"
+        up:       "pageUp",
+        down:     "pageDown",
+        left:     "home",
+        right:    "end"
     },
 
     start: {
-        down: "one",
-        left: "two",
-        up: "three",
-        right: "four",
+        down:   "one",
+        left:   "two",
+        up:     "three",
+        right:  "four",
         select: "five"
     },
 
     select: {
-        cross: "six",
-        circle: "seven",
+        cross:    "six",
+        circle:   "seven",
         triangle: "eight",
-        square: "nine",
-        start: "zero"
+        square:   "nine",
+        start:    "zero"
     }
 };
 
 const buttonState = {};
-for (var button in buttonMappings) {
+for (const button in buttonMappings) {
     buttonState[button] = 0;
 }
-for (var button in keyMappings) {
+for (const button in keyMappings) {
     buttonState[button] = 0;
 }
-for (var shiftButton in shiftMappings) {
+for (const shiftButton in shiftMappings) {
     buttonState[shiftButton] = 0;
-    for (var button in shiftMappings[shiftButton]) {
+    for (const button in shiftMappings[shiftButton]) {
         buttonState[button] = 0;
     }
 }
 
 const axisMappings = {
-    x: "leftStickX",
-    y: "leftStickY",
-    z: "rightStickX",
+    x:  "leftStickX",
+    y:  "leftStickY",
+    z:  "rightStickX",
     rx: "rightStickY"
 };
 
 const axisInvertion = {
-    x: 1,
+    x:  1,
     y: -1,
-    z: 1,
+    z:  1,
     rx: -1
 };
 
 const axisCenters = {};
 const axisFactors = {};
-for (var axis in axisMappings) {
+for (const axis in axisMappings) {
     axisCenters[axis] = 0;
     axisFactors[axis] = axisInvertion[axis];
 }
 
-var vulcanState = false;
-var defaultWeapon = "one";
+let vulcanState  = false;
+let defaultWeapon = "one";
 
 
 module.exports = {
     loop() {
+        // Hold PS+Start+Select to re-calibrate stick centers
         if (ps3.ps && ps3.start && ps3.select && !(buttonState["ps"] && buttonState["start"] && buttonState["select"])) {
             console.info("Calibrating...");
-            for (var axis in axisMappings) {
-                var mapping = axisMappings[axis];
-                var center = ps3[mapping];
-                var factor = (1 / (1 - Math.abs(center))) * axisInvertion[axis];
+            for (const axis in axisMappings) {
+                const mapping = axisMappings[axis];
+                const center  = ps3[mapping];
+                const factor  = (1 / (1 - Math.abs(center))) * axisInvertion[axis];
 
                 console.info("Axis: " + axis + ", Mapping: " + mapping + ", Center: " + center + ", Factor: " + factor);
 
@@ -108,25 +117,27 @@ module.exports = {
             shiftAction = "calibrate";
         }
 
-        for (var axis in axisMappings) {
-            var input = ps3[axisMappings[axis]];
-            var output = (input - axisCenters[axis]) * axisFactors[axis];
+        // Apply stick axes with calibration and quadratic curve
+        for (const axis in axisMappings) {
+            const input  = ps3[axisMappings[axis]];
+            let   output = (input - axisCenters[axis]) * axisFactors[axis];
             output = Math.max(-1, Math.min(1, output));
-            output = output * Math.abs(output);
+            output = output * Math.abs(output);   // quadratic feel
             vjoyA[axis] = output;
-            //console.info(axis + " " + input + " - " + axisCenters[axis] + " * " + axisFactors[axis] + " = " + output);
         }
 
+        // L1+L2 combined → slide up; solo L1/L2 → throttle
         if (ps3.l1 && ps3.l2) {
             vjoyB.tl2 = 1;
-            vjoyA.ry = -ps3.l2Analog;
+            vjoyA.ry  = -ps3.l2Analog;
         } else {
             vjoyB.tl2 = 0;
-            vjoyA.ry = ps3.l1Analog - ps3.l2Analog;
+            vjoyA.ry  = ps3.l1Analog - ps3.l2Analog;
         }
 
+        // Shift state machine
         if (!shiftState) {
-            for (var shiftButton in shiftMappings) {
+            for (const shiftButton in shiftMappings) {
                 if (!buttonState[shiftButton] && ps3[shiftButton]) {
                     shiftState = shiftButton;
                     console.debug("Shift: " + shiftState);
@@ -136,25 +147,24 @@ module.exports = {
             if (!shiftAction) {
                 if (shiftState === "ps") {
                     keyboardEvents.push("esc");
-                } else if (shiftState === "select" ) {
+                } else if (shiftState === "select") {
                     if (vulcanState) {
                         keyboardEvents.push(defaultWeapon);
                     } else {
                         keyboardEvents.push("two");
                     }
-
                     vulcanState = !vulcanState;
                 }
             }
 
-            shiftState = null;
+            shiftState  = null;
             shiftAction = null;
             console.debug("No shift");
         } else {
-            for (var button in shiftMappings[shiftState]) {
+            for (const button in shiftMappings[shiftState]) {
                 if (!buttonState[button] && ps3[button]) {
                     shiftAction = button;
-                    var action = shiftMappings[shiftState][button];
+                    const action = shiftMappings[shiftState][button];
                     keyboardEvents.push(action);
                     switch (action) {
                         case "one":
@@ -162,9 +172,8 @@ module.exports = {
                         case "four":
                         case "five":
                             defaultWeapon = action;
-                            vulcanState = false;
+                            vulcanState   = false;
                             break;
-
                         case "two":
                             vulcanState = true;
                             break;
@@ -173,27 +182,26 @@ module.exports = {
             }
         }
 
-        for (var button in buttonMappings) {
+        // Direct button → vjoyB (only when no shift active)
+        for (const button in buttonMappings) {
             if (!buttonState[button] && ps3[button]) {
-                if (!shiftState) {
-                    vjoyB[buttonMappings[button]] = 1;
-                }
+                if (!shiftState) vjoyB[buttonMappings[button]] = 1;
             } else if (buttonState[button] && !ps3[button]) {
                 vjoyB[buttonMappings[button]] = 0;
             }
         }
 
-        for (var button in keyMappings) {
+        // Direct button → keyboard (only when no shift active)
+        for (const button in keyMappings) {
             if (!buttonState[button] && ps3[button]) {
-                if (!shiftState) {
-                    keyboard[keyMappings[button]] = 1;
-                }
+                if (!shiftState) keyboard[keyMappings[button]] = 1;
             } else if (buttonState[button] && !ps3[button]) {
                 keyboard[keyMappings[button]] = 0;
             }
         }
 
-        for (var button in buttonState) {
+        // Update edge-detection state
+        for (const button in buttonState) {
             buttonState[button] = ps3[button];
         }
     }
