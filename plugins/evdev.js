@@ -130,9 +130,12 @@ class EvdevPlugin extends Plugin {
         super();
         this._devices = {};
         this._emitter = new EventEmitter();
+        this._ticker  = null;
         this._proxy   = new Proxy({}, {
             get: (_, n) => {
-                if (typeof n === 'symbol' || !/^\d+$/.test(String(n))) return undefined;
+                if (typeof n === 'symbol') return undefined;
+                if (n === 'find') return (keyword) => this._findDevice(keyword);
+                if (!/^\d+$/.test(String(n))) return undefined;
                 const i = Number(n);
                 if (!(i in this._devices)) {
                     const dev = new EvdevDevice(i);
@@ -145,13 +148,67 @@ class EvdevPlugin extends Plugin {
         });
     }
 
+    // joystick.find()           — first gamepad/joystick/controller found
+    // joystick.find('8BitDo')   — first device whose name contains '8BitDo'
+    // Returns an EvdevDevice (same object as joystick[N]), or null if not found.
+    _findDevice(keyword) {
+        const DEFAULT_KEYWORDS = ['gamepad', 'joystick', 'controller', 'xbox',
+                                  'dualshock', 'playstation', '8bitdo', 'steam deck',
+                                  'pro controller'];
+        // Normalize: remove hyphens and spaces so "X-Box" matches "xbox", "Pro Controller" matches "procontroller"
+        const norm = s => s.toLowerCase().replace(/[-\s]/g, '');
+        let content;
+        try {
+            content = fs.readFileSync('/proc/bus/input/devices', 'utf8');
+        } catch (err) {
+            console.warn(`[evdev] find: cannot read /proc/bus/input/devices: ${err.message}`);
+            return null;
+        }
+        for (const block of content.split('\n\n').filter(b => b.trim())) {
+            const hMatch = block.match(/^H: Handlers=.*\bevent(\d+)\b/m);
+            if (!hMatch) continue;
+            const nMatch = block.match(/^N: Name="(.*)"/m);
+            if (!nMatch) continue;
+            const name      = nMatch[1];
+            // Skip virtual devices created by ps3pie itself
+            if (name.startsWith('ps3pie')) continue;
+            const nameNorm  = norm(name);
+            const matched   = keyword
+                ? nameNorm.includes(norm(keyword))
+                : DEFAULT_KEYWORDS.some(kw => nameNorm.includes(norm(kw)));
+            if (matched) {
+                const n = Number(hMatch[1]);
+                console.info(`[evdev] find: "${name}" → event${n}`);
+                return this._proxy[n];
+            }
+        }
+        // Show available event devices to help the user call find() with the right name
+        const available = [];
+        for (const block of content.split('\n\n').filter(b => b.trim())) {
+            const h = block.match(/^H: Handlers=.*\bevent(\d+)\b/m);
+            const n = block.match(/^N: Name="(.*)"/m);
+            if (h && n) available.push(`  event${h[1]}: "${n[1]}"`);
+        }
+        const hint = available.length
+            ? `\nAvailable event devices:\n${available.join('\n')}\nUse joystick.find('partial name') or joystick[N] directly.`
+            : '';
+        console.warn(`[evdev] find: no device found${keyword ? ` matching "${keyword}"` : ''}${hint}`);
+        return null;
+    }
+
     get friendlyName() { return 'Generic Joystick (evdev)'; }
     get globalName()   { return 'joystick'; }
     createGlobal()     { return this._proxy; }
 
-    async start() {}
+    async start() {
+        // 60 Hz tick so the loop keeps running while analog axes are held steady.
+        // Without this, the loop only fires on EV_SYN (i.e. when device state changes),
+        // so a stick held at a constant deflection produces no continuous mouse movement.
+        this._ticker = setInterval(() => this._emitter.emit('data'), 16);
+    }
 
     async stop() {
+        if (this._ticker) { clearInterval(this._ticker); this._ticker = null; }
         for (const dev of Object.values(this._devices)) dev.close();
     }
 

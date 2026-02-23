@@ -73,12 +73,14 @@ const buttonCodes = {
 
 // --- Axis codes (ABS_*) ---
 const axisCodes = {
-    x:  0,
-    y:  1,
-    z:  2,
-    rx: 3,
-    ry: 4,
-    rz: 5,
+    x:     0,   // ABS_X     left stick horizontal
+    y:     1,   // ABS_Y     left stick vertical
+    z:     2,   // ABS_Z     left trigger
+    rx:    3,   // ABS_RX    right stick horizontal
+    ry:    4,   // ABS_RY    right stick vertical
+    rz:    5,   // ABS_RZ    right trigger
+    hat0x: 16,  // ABS_HAT0X d-pad horizontal (-1=left, 0=center, 1=right)
+    hat0y: 17,  // ABS_HAT0Y d-pad vertical   (-1=up,   0=center, 1=down)
 };
 
 // --- koffi FFI: ioctl from libc ---

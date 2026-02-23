@@ -2,15 +2,17 @@
 
 // Example script: generic gamepad (evdev) → virtual joystick
 //
-// Find your device index:
-//   grep -A5 "Gamepad\|Joystick\|Xbox\|8BitDo\|DualShock" /proc/bus/input/devices
-//   Look for: H: Handlers=... eventN  → use N below
+// joystick.find() auto-detects the first gamepad or joystick connected.
+// To target a specific controller by name:
+//   joystick.find('8BitDo')
+//   joystick.find('Xbox')
+//   joystick.find('DualShock')
+// To target by event number explicitly:
+//   joystick[4]   (opens /dev/input/event4)
 
-const DEVICE   = 0;     // change to your /dev/input/eventN index
 const DEADBAND = 0.05;  // stick dead zone (normalized)
 
-// Accessing joystick[N] at top level opens the device immediately on startup
-const pad = joystick[DEVICE];
+const pad = joystick.find();   // auto-detect first gamepad
 
 module.exports = {
     loop() {
@@ -30,12 +32,10 @@ module.exports = {
         vjoyA.z  = filters.ensureMapRange(pad.axes[2] ?? 0, 0, 255, -1, 1);
         vjoyA.rz = filters.ensureMapRange(pad.axes[5] ?? 0, 0, 255, -1, 1);
 
-        // D-pad (hat switches) → vjoyB dpad buttons
-        // Hat axes: -1=negative direction, 0=center, 1=positive direction
-        vjoyB.left  = (pad.axes[16] ?? 0) < 0 ? 1 : 0;
-        vjoyB.right = (pad.axes[16] ?? 0) > 0 ? 1 : 0;
-        vjoyB.up    = (pad.axes[17] ?? 0) < 0 ? 1 : 0;
-        vjoyB.down  = (pad.axes[17] ?? 0) > 0 ? 1 : 0;
+        // D-pad (hat switches) → vjoyA hat axes (ABS_HAT0X/Y, same as real Xbox pad)
+        // Hat raw values: -1=negative direction, 0=center, 1=positive direction
+        vjoyA.hat0x = pad.axes[16] ?? 0;
+        vjoyA.hat0y = pad.axes[17] ?? 0;
 
         // Face buttons
         vjoyB.a = pad.buttons[0x130] ?? 0;   // BTN_SOUTH (A / Cross)
@@ -54,5 +54,6 @@ module.exports = {
         // Menu buttons
         vjoyB.select = pad.buttons[0x13a] ?? 0;  // BTN_SELECT (Back)
         vjoyB.start  = pad.buttons[0x13b] ?? 0;  // BTN_START  (Start / Menu)
+        vjoyB.mode   = pad.buttons[0x13c] ?? 0;  // BTN_MODE   (Home / Guide / Xbox)
     }
 };

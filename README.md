@@ -44,7 +44,18 @@ This grants access to `uinput`, `hidraw`, and `evdev` devices for the logged-in 
 
 ### `joystick[N]` — Generic gamepad (evdev)
 
-Reads any gamepad or joystick from `/dev/input/eventN`. Find your device index:
+Reads any gamepad or joystick from `/dev/input/eventN`.
+
+**Auto-detect** (recommended):
+
+```js
+const pad = joystick.find();            // first gamepad/joystick/controller found
+const pad = joystick.find('8BitDo');    // first device whose name contains '8BitDo'
+const pad = joystick.find('Xbox');
+const pad = joystick.find('DualShock');
+```
+
+**By index** (when you know the device number):
 
 ```bash
 grep -A5 "Gamepad\|Joystick\|Xbox\|8BitDo\|DualShock" /proc/bus/input/devices
@@ -189,15 +200,17 @@ PS3PIE_FREEIMU_PORT=/dev/ttyUSB1 node index.js scripts/imu.js
 
 ### `vjoyA` — Virtual joystick axes
 
-Valid axis names: `x`, `y`, `z`, `rx`, `ry`, `rz`. Values in `[-1, 1]` (scaled to `[0, 1000]` internally).
+Values in `[-1, 1]` (scaled to `[0, 1000]` internally).
 
 ```js
-vjoyA.x  = 0.5;    // left stick horizontal
-vjoyA.y  = 0.0;    // left stick vertical
-vjoyA.rx = 0.0;    // right stick horizontal
-vjoyA.ry = 0.0;    // right stick vertical
-vjoyA.z  = 0.0;    // left trigger
-vjoyA.rz = 0.0;    // right trigger
+vjoyA.x     = 0.5;   // ABS_X     left stick horizontal
+vjoyA.y     = 0.0;   // ABS_Y     left stick vertical
+vjoyA.rx    = 0.0;   // ABS_RX    right stick horizontal
+vjoyA.ry    = 0.0;   // ABS_RY    right stick vertical
+vjoyA.z     = 0.0;   // ABS_Z     left trigger
+vjoyA.rz    = 0.0;   // ABS_RZ    right trigger
+vjoyA.hat0x = 0.0;   // ABS_HAT0X d-pad horizontal (-1=left, 0=center, 1=right)
+vjoyA.hat0y = 0.0;   // ABS_HAT0Y d-pad vertical   (-1=up,   0=center, 1=down)
 ```
 
 ### `vjoyB` — Virtual joystick buttons
