@@ -56,11 +56,15 @@ class EvdevDevice {
             console.warn(`[evdev] Cannot open ${this._path}: ${err.message}`);
             return;
         }
-        const ret = ioctl(this._fd, EVIOCGRAB, 1);
-        if (ret < 0) {
-            console.warn(`[evdev] EVIOCGRAB failed on ${this._path} (device may be grabbed by another process)`);
-        } else {
-            console.info(`[evdev] Grabbed ${this._path} exclusively`);
+        try {
+            const ret = ioctl(this._fd, EVIOCGRAB, 1);
+            if (ret < 0) {
+                console.warn(`[evdev] EVIOCGRAB failed on ${this._path} (ret=${ret}; device may be grabbed by another process)`);
+            } else {
+                console.info(`[evdev] Grabbed ${this._path} exclusively`);
+            }
+        } catch (err) {
+            console.warn(`[evdev] EVIOCGRAB error on ${this._path}: ${err.message ?? err}`);
         }
         this._timer = setInterval(() => this._poll(), POLL_MS);
     }
