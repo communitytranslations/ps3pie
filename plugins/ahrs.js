@@ -1,21 +1,21 @@
 'use strict';
 
-// Plugin de entrada: AHRS IMU vía puerto serie (protocolo SEN-10736/SparkFun 9DOF)
+// Input plugin: AHRS IMU via serial port (SEN-10736 / SparkFun 9DOF protocol)
 //
-// Puerto: variable de entorno PS3PIE_AHRS_PORT (por defecto /dev/ttyUSB0)
-// Baudios: 57600
+// Port: PS3PIE_AHRS_PORT environment variable (default: /dev/ttyUSB0)
+// Baud rate: 57600
 //
-// Inicialización (comandos ASCII enviados al dispositivo):
-//   #ob  — activar salida binaria
-//   #o1  — modo streaming continuo
-//   #oe0 — desactivar mensajes de error
+// Initialization commands (ASCII, sent to device on open):
+//   #ob  — enable binary output
+//   #o1  — enable continuous streaming mode
+//   #oe0 — disable error messages
 //
-// Protocolo binario (12 bytes por muestra, Little-Endian):
-//   bytes 0-3  : yaw   (float32) — radianes
-//   bytes 4-7  : pitch (float32) — radianes
-//   bytes 8-11 : roll  (float32) — radianes
+// Binary protocol (12 bytes per sample, Little-Endian):
+//   bytes 0-3  : yaw   (float32) — radians
+//   bytes 4-7  : pitch (float32) — radians
+//   bytes 8-11 : roll  (float32) — radians
 //
-// Uso en scripts:
+// Usage in scripts:
 //   const y = ahrsImu.yaw;    // −π..+π
 //   const p = ahrsImu.pitch;
 //   const r = ahrsImu.roll;
@@ -59,11 +59,11 @@ class AhrsPlugin extends Plugin {
 
         if (!this._port) return;
 
-        // Secuencia de inicialización — permite 100 ms entre comandos
+        // Initialization sequence — 100 ms gap between commands
         const write = (cmd) => new Promise(r => this._port.write(cmd, r));
-        await write('#ob\r');    // binary output
+        await write('#ob\r');    // enable binary output
         await new Promise(r => setTimeout(r, 100));
-        await write('#o1\r');    // continuous streaming
+        await write('#o1\r');    // enable continuous streaming
         await new Promise(r => setTimeout(r, 100));
         await write('#oe0\r');   // disable error messages
         await new Promise(r => setTimeout(r, 100));

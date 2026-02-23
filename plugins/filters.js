@@ -2,7 +2,7 @@
 
 const Plugin = require('../plugin');
 
-// Helper interno — no expuesto al script
+// Internal helper — not exposed to scripts
 function _ensureMapRange(x, x0, x1, y0, y1) {
     return Math.max(Math.min(((x - x0) / (x1 - x0)) * (y1 - y0) + y0, y1), y0);
 }

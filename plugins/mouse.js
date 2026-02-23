@@ -1,14 +1,14 @@
 'use strict';
 
-// Escritura de ratón virtual vía uinput (segundo dispositivo: "ps3pie-mouse")
+// Virtual mouse output via uinput (second device: "ps3pie-mouse")
 //
-// Expone el global `mouse` en los scripts:
-//   mouse.x      — movimiento relativo horizontal (píxeles/frame, reset a 0 tras emit)
-//   mouse.y      — movimiento relativo vertical   (píxeles/frame, reset a 0 tras emit)
-//   mouse.wheel  — rueda de scroll (ticks/frame, reset a 0 tras emit)
-//   mouse.left   — botón izquierdo  (0/1, nivel)
-//   mouse.right  — botón derecho    (0/1, nivel)
-//   mouse.middle — botón central    (0/1, nivel)
+// Exposes the global `mouse` to scripts:
+//   mouse.x      — horizontal relative movement (pixels/frame, reset to 0 after emit)
+//   mouse.y      — vertical relative movement   (pixels/frame, reset to 0 after emit)
+//   mouse.wheel  — scroll wheel (ticks/frame, reset to 0 after emit)
+//   mouse.left   — left button   (0/1, level)
+//   mouse.right  — right button  (0/1, level)
+//   mouse.middle — middle button (0/1, level)
 
 const fs     = require('fs');
 const koffi  = require('koffi');
@@ -37,7 +37,7 @@ const UI_SET_RELBIT  = 0x40045566;
 const lib   = koffi.load('libc.so.6');
 const ioctl = lib.func('ioctl', 'int', ['int', 'ulong', 'long']);
 
-// uinput_user_dev: 1116 bytes. Sin ejes ABS → absmax/absmin/absfuzz/absflat quedan a cero.
+// uinput_user_dev: 1116 bytes. No ABS axes → absmax/absmin/absfuzz/absflat remain zero.
 function makeUinputUserDev(name) {
     const buf = Buffer.alloc(1116, 0);
     buf.write(name, 0, 'ascii');
@@ -110,12 +110,12 @@ class MousePlugin extends Plugin {
         const g = this._global;
         let dirty = false;
 
-        // Ejes relativos: emitir si hay movimiento, luego resetear a 0
+        // Relative axes: emit if non-zero, then reset to 0
         if (g.x !== 0)     { this._write(EV_REL, REL_X,     g.x);     g.x     = 0; dirty = true; }
         if (g.y !== 0)     { this._write(EV_REL, REL_Y,     g.y);     g.y     = 0; dirty = true; }
         if (g.wheel !== 0) { this._write(EV_REL, REL_WHEEL, g.wheel); g.wheel = 0; dirty = true; }
 
-        // Botones: emitir solo cuando cambia el estado
+        // Buttons: emit only when state changes
         for (const [name, code] of [['left', BTN_LEFT], ['right', BTN_RIGHT], ['middle', BTN_MIDDLE]]) {
             const val = g[name] ? 1 : 0;
             if (val !== this._prev[name]) {

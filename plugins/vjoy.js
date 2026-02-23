@@ -37,7 +37,7 @@ class VjoyPlugin extends Plugin {
         }
         this._keyboardEvents.splice(0);
 
-        // keyboard: diff sostenido
+        // keyboard: sustained diff
         for (const code in this._keyboard) {
             const next = this._keyboard[code];
             if (next !== this._keyboardPrev[code]) {
@@ -46,7 +46,7 @@ class VjoyPlugin extends Plugin {
             }
         }
 
-        // vjoyA: ejes — escalar de [-1,1] a [0,1000] (centro=500)
+        // vjoyA: axes — scale from [-1,1] to [0,1000] (center=500)
         for (const code in this._vjoyA) {
             const next = this._vjoyA[code];
             if (next !== this._vjoyAPrev[code]) {
@@ -55,7 +55,7 @@ class VjoyPlugin extends Plugin {
             }
         }
 
-        // vjoyB: botones
+        // vjoyB: buttons
         for (const code in this._vjoyB) {
             const next = this._vjoyB[code];
             if (next !== this._vjoyBPrev[code]) {

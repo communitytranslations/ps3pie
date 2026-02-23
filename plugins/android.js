@@ -1,27 +1,27 @@
 'use strict';
 
-// Plugin de entrada: Android IMU vía UDP (protocolo FreePIE Android IMU)
+// Input plugin: Android IMU via UDP (FreePIE Android IMU protocol)
 //
-// Protocolo binario Little-Endian, puerto 5555:
+// Binary Little-Endian protocol, port 5555:
 //   byte  0     : device index (0-15)
 //   byte  1     : flags  (0x01 = SEND_RAW, 0x02 = SEND_ORIENTATION)
-//   bytes 2-37  : datos crudos (solo si flag 0x01)
+//   bytes 2-37  : raw sensor data (only if flag 0x01)
 //                   floatLE × 3 : acc  (ax, ay, az)   — m/s²
 //                   floatLE × 3 : gyro (gx, gy, gz)   — rad/s
 //                   floatLE × 3 : mag  (mx, my, mz)   — µT
-//   bytes 38-49 : orientación  (solo si flag 0x02, después de raw si también está)
-//                   floatLE     : yaw   (Euler Z) — grados
-//                   floatLE     : pitch (Euler X) — grados
-//                   floatLE     : roll  (Euler Y) — grados
+//   bytes 38-49 : orientation   (only if flag 0x02, after raw if both flags set)
+//                   floatLE     : yaw   (Euler Z) — degrees
+//                   floatLE     : pitch (Euler X) — degrees
+//                   floatLE     : roll  (Euler Y) — degrees
 //
-// Uso en scripts:
+// Usage in scripts:
 //   const phone = android[0];     // device index 0
-//   phone.yaw, phone.pitch, phone.roll          // orientación
-//   phone.raw.ax, .ay, .az                      // acelerómetro
-//   phone.raw.gx, .gy, .gz                      // giroscopio
-//   phone.raw.mx, .my, .mz                      // magnetómetro
+//   phone.yaw, phone.pitch, phone.roll          // orientation
+//   phone.raw.ax, .ay, .az                      // accelerometer
+//   phone.raw.gx, .gy, .gz                      // gyroscope
+//   phone.raw.mx, .my, .mz                      // magnetometer
 //
-// App oficial: "FreePIE IMU sender" (APK en /opt/FreePIE/Lib/Android/)
+// Official app: "FreePIE IMU sender" (APK at /opt/FreePIE/Lib/Android/)
 
 const dgram       = require('dgram');
 const EventEmitter = require('events');
@@ -66,7 +66,7 @@ class AndroidPlugin extends Plugin {
             this._socket.once('error', err => {
                 console.warn(`[android] Cannot bind port ${DEFAULT_PORT}: ${err.message}`);
                 this._socket = null;
-                resolve();   // no fatal: el resto de plugins sigue funcionando
+                resolve();   // non-fatal: remaining plugins keep working
             });
             this._socket.bind(DEFAULT_PORT, '0.0.0.0', () => {
                 console.info(`[android] Listening on UDP port ${DEFAULT_PORT}`);

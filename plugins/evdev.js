@@ -1,16 +1,16 @@
 'use strict';
 
-// Lectura de joysticks genéricos vía evdev (/dev/input/eventN)
+// Generic joystick input via evdev (/dev/input/eventN)
 //
 // input_event struct (24 bytes, Linux 64-bit):
 //   offset  0 : tv_sec  (int64)
 //   offset  8 : tv_usec (int64)
 //   offset 16 : type    (uint16)  — EV_SYN=0, EV_KEY=1, EV_ABS=3
-//   offset 18 : code    (uint16)  — eje (ABS_*) o botón (BTN_*)
-//   offset 20 : value   (int32)   — raw: -32767..32767 para ejes, 0/1 para botones
+//   offset 18 : code    (uint16)  — axis (ABS_*) or button (BTN_*)
+//   offset 20 : value   (int32)   — raw: -32767..32767 for axes, 0/1 for buttons
 //
-// Ejes (ABS_*):  X=0, Y=1, Z=2, RX=3, RY=4, RZ=5, HAT0X=16, HAT0Y=17
-// Botones (BTN_*): SOUTH=0x130, EAST=0x131, NORTH=0x133, WEST=0x134,
+// Axes (ABS_*):   X=0, Y=1, Z=2, RX=3, RY=4, RZ=5, HAT0X=16, HAT0Y=17
+// Buttons (BTN_*): SOUTH=0x130, EAST=0x131, NORTH=0x133, WEST=0x134,
 //                  TL=0x136, TR=0x137, TL2=0x138, TR2=0x139,
 //                  SELECT=0x13a, START=0x13b, MODE=0x13c,
 //                  THUMBL=0x13d, THUMBR=0x13e
@@ -25,13 +25,13 @@ const EV_KEY = 1;
 const EV_ABS = 3;
 
 const BUF_SIZE = 24;
-const POLL_MS  = 4;   // 250 Hz — suficiente para cualquier gamepad (típico: 125 Hz)
+const POLL_MS  = 4;   // 250 Hz — sufficient for any gamepad (typical rate: 125 Hz)
 
-// O_NONBLOCK: fs.readSync retorna EAGAIN si no hay datos en lugar de bloquear.
+// O_NONBLOCK: fs.readSync returns EAGAIN when no data is available instead of blocking.
 const O_RDONLY_NONBLOCK = fs.constants.O_RDONLY | fs.constants.O_NONBLOCK;
 
 // EVIOCGRAB = _IOW('E', 0x90, int) = 0x40044590
-// Concede acceso exclusivo al dispositivo: ningún otro proceso recibe sus eventos.
+// Grants exclusive access to the device: no other process receives its events.
 const EVIOCGRAB = 0x40044590;
 
 const lib   = koffi.load('libc.so.6');
@@ -42,7 +42,7 @@ class EvdevDevice {
         this._path    = `/dev/input/event${n}`;
         this._fd      = -1;
         this._timer   = null;
-        this._buf     = Buffer.allocUnsafe(BUF_SIZE * 32);  // hasta 32 eventos por tick
+        this._buf     = Buffer.allocUnsafe(BUF_SIZE * 32);  // up to 32 events per tick
         this._partial = null;
         this._emitter = new EventEmitter();
         this.axes     = {};
@@ -69,14 +69,14 @@ class EvdevDevice {
         this._timer = setInterval(() => this._poll(), POLL_MS);
     }
 
-    // Drena todos los eventos disponibles en este tick. Cada llamada es O(1) amortizado.
+    // Drain all available events in this tick. Each call is O(1) amortized.
     _poll() {
         while (this._fd >= 0) {
             let n;
             try {
                 n = fs.readSync(this._fd, this._buf, 0, this._buf.length, null);
             } catch (err) {
-                if (err.code === 'EAGAIN' || err.code === 'EWOULDBLOCK') return;  // sin datos, fin del drenado
+                if (err.code === 'EAGAIN' || err.code === 'EWOULDBLOCK') return;  // no data available, end of drain
                 console.warn(`[evdev] ${this._path}: ${err.message}`);
                 return;
             }
@@ -110,14 +110,14 @@ class EvdevDevice {
 
     close() {
         if (this._timer) {
-            clearInterval(this._timer);   // primero: para el polling
+            clearInterval(this._timer);   // stop polling first
             this._timer = null;
         }
         if (this._fd >= 0) {
             const fd = this._fd;
             this._fd = -1;
-            ioctl(fd, EVIOCGRAB, 0);      // libera el grab antes de cerrar (explícito)
-            fs.closeSync(fd);             // seguro: no hay lecturas concurrentes en thread pool
+            ioctl(fd, EVIOCGRAB, 0);      // release grab before closing
+            fs.closeSync(fd);             // safe: no concurrent reads in thread pool
         }
         this._partial = null;
     }

@@ -1,30 +1,30 @@
 'use strict';
 
-// Plugin de entrada: MIDI vía ALSA (node-midi)
+// Input plugin: MIDI via ALSA (node-midi / RtMidi)
 //
-// Expone puertos MIDI como proxy indexado midi[N]:
-//   midi[0].status   — tipo de mensaje (nibble alto del status byte)
+// Exposes MIDI ports as an indexed Proxy midi[N]:
+//   midi[0].status   — message type (high nibble of status byte)
 //                        0x8=NoteOff, 0x9=NoteOn, 0xA=PolyAftertouch,
 //                        0xB=Control, 0xC=ProgramChange,
 //                        0xD=ChannelAftertouch, 0xE=PitchBend
-//   midi[0].channel  — canal MIDI 0-15
-//   midi[0].data     — [byte, byte]  datos del mensaje
+//   midi[0].channel  — MIDI channel 0-15
+//   midi[0].data     — [byte, byte]  message data bytes
 //
-// Atajos semánticos (mismos valores, nombres más legibles):
-//   midi[0].note     — nota  (NoteOn/NoteOff: data[0])
-//   midi[0].velocity — velocidad (NoteOn/NoteOff: data[1])
-//   midi[0].cc       — número de controlador (Control Change: data[0])
-//   midi[0].value    — valor del controlador (Control Change: data[1])
+// Semantic shorthands (same values, more readable names):
+//   midi[0].note     — note number  (NoteOn/NoteOff: data[0])
+//   midi[0].velocity — velocity     (NoteOn/NoteOff: data[1])
+//   midi[0].cc       — controller number (Control Change: data[0])
+//   midi[0].value    — controller value  (Control Change: data[1])
 //
-// Uso en scripts:
+// Usage in scripts:
 //   if (midi[0].status === 0x9 && midi[0].note === 60) { ... }  // Middle C
-//   vjoyA.x = filters.mapRange(midi[0].value, 0, 127, -1, 1);   // CC → eje
+//   vjoyA.x = filters.mapRange(midi[0].value, 0, 127, -1, 1);   // CC → axis
 
 const midi        = require('midi');
 const EventEmitter = require('events');
 const Plugin       = require('../plugin');
 
-// Constantes de tipo de mensaje (nibble alto del status byte)
+// Message type constants (high nibble of status byte)
 const STATUS_NOTE_OFF            = 0x8;
 const STATUS_NOTE_ON             = 0x9;
 const STATUS_CONTROL             = 0xB;
@@ -44,7 +44,7 @@ class MidiDevice {
         this.data     = [0, 0];
     }
 
-    // Atajos — acceden a data[], siempre actualizados
+    // Shorthands — read from data[], always up to date
     get note()     { return this.data[0]; }
     get velocity() { return this.data[1]; }
     get cc()       { return this.data[0]; }
@@ -57,7 +57,7 @@ class MidiDevice {
             return;
         }
         const name = this._input.getPortName(this._n);
-        // ignoreTypes: sysex=true, timing=true, activeSensing=true (reduce ruido)
+        // ignoreTypes: sysex=true, timing=true, activeSensing=true (reduce noise)
         this._input.ignoreTypes(true, true, true);
         this._input.on('message', (_delta, msg) => {
             this._queue.push(msg);
@@ -67,10 +67,10 @@ class MidiDevice {
         console.info(`[midi] Opened port ${this._n}: ${name}`);
     }
 
-    // Llamado desde MidiPlugin.doBeforeNextExecute()
+    // Called from MidiPlugin.doBeforeNextExecute()
     flush() {
         if (this._queue.length === 0) return;
-        // Drena toda la cola; el script ve el último mensaje del frame
+        // Drain entire queue; script sees the last message of the frame
         while (this._queue.length > 0) {
             const msg = this._queue.shift();
             const statusByte = msg[0] ?? 0;
@@ -125,7 +125,7 @@ class MidiPlugin extends Plugin {
     on(event, listener) { this._emitter.on(event, listener); }
 }
 
-// Exportar también las constantes de status para uso en scripts
+// Export status constants for use in scripts
 MidiPlugin.STATUS_NOTE_OFF       = STATUS_NOTE_OFF;
 MidiPlugin.STATUS_NOTE_ON        = STATUS_NOTE_ON;
 MidiPlugin.STATUS_CONTROL        = STATUS_CONTROL;

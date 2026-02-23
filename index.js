@@ -29,7 +29,7 @@ const PLUGINS = [
     new FreeImuPlugin(),
 ];
 
-// Construir sandbox a partir de los globales de cada plugin
+// Build sandbox from each plugin's globals
 const sandbox = {
     console,
     exports:  {},
@@ -45,7 +45,7 @@ for (const plugin of PLUGINS) {
     }
 }
 
-// Guard contra ejecuciones concurrentes
+// Guard against concurrent executions
 let running = false;
 
 function onData() {
@@ -79,8 +79,8 @@ async function main() {
         if (typeof plugin.on === 'function') plugin.on('data', onData);
     }
 
-    // Warmup: ejecuta loop() una vez para que los scripts que acceden a joystick[N]
-    // dentro de loop() (en lugar de en el nivel superior) abran el dispositivo.
+    // Warmup: run loop() once so scripts that access joystick[N] inside loop()
+    // (rather than at top level) open the device on startup.
     setImmediate(onData);
 }
 

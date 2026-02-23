@@ -1,21 +1,21 @@
 'use strict';
 
-// Plugin de entrada: iPhone/iPad IMU vía UDP (protocolo FreePIE iOS IMU)
+// Input plugin: iPhone/iPad IMU via UDP (FreePIE iOS IMU protocol)
 //
-// Protocolo ASCII CSV, puerto 10552:
-//   Primera línea (cabecera): "Timestamp,Roll,Pitch,Yaw,UserAcceleration.X,...\r\n"
-//   Líneas sucesivas (datos):  "1234567890,1.23,-0.45,0.78,...\r\n"
+// ASCII CSV protocol, port 10552:
+//   First packet (header): "Timestamp,Roll,Pitch,Yaw,UserAcceleration.X,...\r\n"
+//   Subsequent packets (data): "1234567890,1.23,-0.45,0.78,...\r\n"
 //
-// NOTA: FreePIE iOS invierte Roll y Pitch respecto a Android:
-//   columna "Roll"  → iphone.pitch
-//   columna "Pitch" → iphone.roll
-//   columna "Yaw"   → iphone.yaw
+// NOTE: FreePIE iOS swaps Roll and Pitch compared to Android:
+//   column "Roll"  → iphone.pitch
+//   column "Pitch" → iphone.roll
+//   column "Yaw"   → iphone.yaw
 //
-// Los campos opcionales (UserAcceleration, Gravity, RotationRate, Attitude)
-// se ignoran en esta implementación — solo se parsea orientación.
+// Optional fields (UserAcceleration, Gravity, RotationRate, Attitude)
+// are ignored — only orientation is parsed.
 //
-// Uso en scripts:
-//   iphone.yaw, iphone.pitch, iphone.roll   // orientación en grados
+// Usage in scripts:
+//   iphone.yaw, iphone.pitch, iphone.roll   // orientation in degrees
 
 const dgram       = require('dgram');
 const EventEmitter = require('events');
@@ -47,7 +47,7 @@ class IosPlugin extends Plugin {
             this._socket.once('error', err => {
                 console.warn(`[ios] Cannot bind port ${DEFAULT_PORT}: ${err.message}`);
                 this._socket = null;
-                resolve();   // no fatal
+                resolve();   // non-fatal
             });
             this._socket.bind(DEFAULT_PORT, '0.0.0.0', () => {
                 console.info(`[ios] Listening on UDP port ${DEFAULT_PORT}`);
@@ -61,7 +61,7 @@ class IosPlugin extends Plugin {
         if (!line) return;
 
         if (!this._headerParsed) {
-            // Primera línea: cabecera CSV
+            // First packet: CSV header
             const cols = line.split(',');
             this._rollIdx  = cols.indexOf('Roll');
             this._pitchIdx = cols.indexOf('Pitch');
@@ -76,7 +76,7 @@ class IosPlugin extends Plugin {
         }
 
         const cols = line.split(',');
-        // FreePIE iOS: columna "Roll" → pitch, columna "Pitch" → roll (inversión intencional)
+        // FreePIE iOS: column "Roll" → pitch, column "Pitch" → roll (intentional swap)
         const roll  = parseFloat(cols[this._rollIdx]);
         const pitch = parseFloat(cols[this._pitchIdx]);
         const yaw   = parseFloat(cols[this._yawIdx]);

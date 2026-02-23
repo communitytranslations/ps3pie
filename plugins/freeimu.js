@@ -1,15 +1,15 @@
 'use strict';
 
-// Plugin de entrada: FreeIMU vía puerto serie (protocolo CSV ASCII)
+// Input plugin: FreeIMU via serial port (ASCII CSV protocol)
 //
-// Puerto: variable de entorno PS3PIE_FREEIMU_PORT (por defecto /dev/ttyUSB0)
-// Baudios: 115200
+// Port: PS3PIE_FREEIMU_PORT environment variable (default: /dev/ttyUSB0)
+// Baud rate: 115200
 //
-// Protocolo de texto, streaming continuo, una línea por muestra:
+// Text streaming protocol, one line per sample:
 //   "yaw,pitch,roll\r\n"
-//   Valores en radianes, separados por coma, coma decimal = punto.
+//   Values in radians, comma-separated, decimal point = dot.
 //
-// Uso en scripts:
+// Usage in scripts:
 //   const y = freeImu.yaw;    // −π..+π
 //   const p = freeImu.pitch;
 //   const r = freeImu.roll;
