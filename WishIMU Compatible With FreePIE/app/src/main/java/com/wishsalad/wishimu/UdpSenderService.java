@@ -70,6 +70,8 @@ public class UdpSenderService extends Service implements SensorEventListener {
     private boolean sendRaw;
     private int sampleRate;
     private SensorManager sensorManager;
+    private String targetIp;
+    private int targetPort;
 
     private Thread worker;
     private volatile boolean running;
@@ -134,6 +136,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
     private void setLastError(String e) {
         synchronized (this) { lastError = e; }
         debugError = e;
+        updateNotification("⚠ Connection error – retrying...", android.R.drawable.ic_dialog_alert);
     }
 
     @SuppressWarnings("unused")
@@ -220,7 +223,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
     public static final String CHANNEL_ID = "ForegroundServiceChannel";
 
-    private void startForegroundWithNotification(String ip, int port) {
+    private Notification buildNotification(String text, int iconRes) {
         Intent openIntent = new Intent(this, MainActivity.class);
         PendingIntent openPending = PendingIntent.getActivity(this,
                 0, openIntent, PendingIntent.FLAG_IMMUTABLE);
@@ -230,16 +233,25 @@ public class UdpSenderService extends Service implements SensorEventListener {
         PendingIntent stopPending = PendingIntent.getService(this,
                 0, stopIntent, PendingIntent.FLAG_IMMUTABLE);
 
-        Notification notification = new Notification.Builder(this, CHANNEL_ID)
+        return new Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle("WishIMU")
-                .setContentText("\u2192 " + ip + ":" + port)
-                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentText(text)
+                .setSmallIcon(iconRes)
                 .setContentIntent(openPending)
                 .setOngoing(true)
                 .addAction(new Notification.Action.Builder(
                         null, "Stop", stopPending).build())
                 .build();
+    }
 
+    private void updateNotification(String text, int iconRes) {
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm != null) nm.notify(1, buildNotification(text, iconRes));
+    }
+
+    private void startForegroundWithNotification(String ip, int port) {
+        Notification notification = buildNotification(
+                "\u2192 " + ip + ":" + port, R.drawable.ic_notify);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
@@ -266,8 +278,10 @@ public class UdpSenderService extends Service implements SensorEventListener {
                 new IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED);
 
         deviceIndex = intent.getByteExtra("deviceIndex", (byte) 0);
-        final int port = intent.getIntExtra("port", 5555);
-        final String ip = intent.getStringExtra("toIp");
+        targetPort = intent.getIntExtra("port", 5555);
+        targetIp = intent.getStringExtra("toIp");
+        final int port = targetPort;
+        final String ip = targetIp;
 
         sendRaw = intent.getBooleanExtra("sendRaw", true);
         sendOrientation = intent.getBooleanExtra("sendOrientation", true);
@@ -285,7 +299,8 @@ public class UdpSenderService extends Service implements SensorEventListener {
                     socket = new DatagramSocket();
                     p.setAddress(InetAddress.getByName(ip));
                     p.setPort(port);
-                    debugError = null;          // Connection established, clear previous error
+                    debugError = null;
+                    updateNotification("\u2192 " + ip + ":" + port, R.drawable.ic_notify);
 
                     while (running) {
                         synchronized (this) {
