@@ -141,13 +141,11 @@ class MainActivity : ComponentActivity() {
         if (volumeButtonsActive) {
             when (keyCode) {
                 KeyEvent.KEYCODE_VOLUME_UP -> {
-                    UdpSenderService.buttonState =
-                        (UdpSenderService.buttonState.toInt() or 0x01).toByte()
+                    UdpSenderService.buttonState.updateAndGet { it or 0x01 }
                     return true
                 }
                 KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                    UdpSenderService.buttonState =
-                        (UdpSenderService.buttonState.toInt() or 0x02).toByte()
+                    UdpSenderService.buttonState.updateAndGet { it or 0x02 }
                     return true
                 }
             }
@@ -159,13 +157,11 @@ class MainActivity : ComponentActivity() {
         if (volumeButtonsActive) {
             when (keyCode) {
                 KeyEvent.KEYCODE_VOLUME_UP -> {
-                    UdpSenderService.buttonState =
-                        (UdpSenderService.buttonState.toInt() and 0x01.inv()).toByte()
+                    UdpSenderService.buttonState.updateAndGet { it and 0x01.inv() }
                     return true
                 }
                 KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                    UdpSenderService.buttonState =
-                        (UdpSenderService.buttonState.toInt() and 0x02.inv()).toByte()
+                    UdpSenderService.buttonState.updateAndGet { it and 0x02.inv() }
                     return true
                 }
             }
@@ -186,6 +182,7 @@ fun WishImuTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = colorScheme, content = content)
 }
 
+@Suppress("UNUSED_VALUE") // showSettings = false inside ModalBottomSheet triggers a false positive
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WishImuApp(
@@ -466,7 +463,7 @@ fun WishImuApp(
                             isRunning = true
                         }
                     } else {
-                        UdpSenderService.buttonState = 0
+                        UdpSenderService.buttonState.set(0)
                         onStop()
                         isRunning = false
                     }
@@ -503,11 +500,9 @@ fun WishImuApp(
                             .background(MaterialTheme.colorScheme.primary)
                             .pointerInput(Unit) {
                                 detectTapGestures(onPress = {
-                                    UdpSenderService.buttonState =
-                                        (UdpSenderService.buttonState.toInt() or 0x01).toByte()
+                                    UdpSenderService.buttonState.updateAndGet { it or 0x01 }
                                     tryAwaitRelease()
-                                    UdpSenderService.buttonState =
-                                        (UdpSenderService.buttonState.toInt() and 0x01.inv()).toByte()
+                                    UdpSenderService.buttonState.updateAndGet { it and 0x01.inv() }
                                 })
                             },
                         contentAlignment = Alignment.Center
@@ -522,11 +517,9 @@ fun WishImuApp(
                             .background(MaterialTheme.colorScheme.secondary)
                             .pointerInput(Unit) {
                                 detectTapGestures(onPress = {
-                                    UdpSenderService.buttonState =
-                                        (UdpSenderService.buttonState.toInt() or 0x02).toByte()
+                                    UdpSenderService.buttonState.updateAndGet { it or 0x02 }
                                     tryAwaitRelease()
-                                    UdpSenderService.buttonState =
-                                        (UdpSenderService.buttonState.toInt() and 0x02.inv()).toByte()
+                                    UdpSenderService.buttonState.updateAndGet { it and 0x02.inv() }
                                 })
                             },
                         contentAlignment = Alignment.Center

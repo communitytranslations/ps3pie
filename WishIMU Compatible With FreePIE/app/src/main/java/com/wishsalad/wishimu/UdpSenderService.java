@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class UdpSenderService extends Service implements SensorEventListener {
     /** True while the service is running. Read by MainActivity.onResume() to sync UI state. */
@@ -59,7 +60,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
     private static final byte SEND_NONE = 0x00;
 
     /** Button bitmask written by MainActivity and read by the worker thread. Bit 0 = fire. */
-    public static volatile byte buttonState = 0;
+    public static final AtomicInteger buttonState = new AtomicInteger(0);
 
     /** True when volume buttons should be intercepted as mouse clicks. Updated by MainActivity. */
     public static volatile boolean volumeButtonsEnabled = false;
@@ -87,8 +88,8 @@ public class UdpSenderService extends Service implements SensorEventListener {
     private MediaSession mediaSession;
     // Schedules button-release events when no key-up is available (VolumeProvider only gets press)
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable releaseVolUp   = () -> buttonState = (byte)(buttonState & ~0x01);
-    private final Runnable releaseVolDown = () -> buttonState = (byte)(buttonState & ~0x02);
+    private final Runnable releaseVolUp   = () -> buttonState.updateAndGet(b -> b & ~0x01);
+    private final Runnable releaseVolDown = () -> buttonState.updateAndGet(b -> b & ~0x02);
 
     private Thread worker;
     private volatile boolean running;
@@ -210,7 +211,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
         started = false;
         handler.removeCallbacks(releaseVolUp);
         handler.removeCallbacks(releaseVolDown);
-        buttonState = 0;
+        buttonState.set(0);
         if (mediaSession != null) {
             mediaSession.setActive(false);
             mediaSession.release();
@@ -379,16 +380,16 @@ public class UdpSenderService extends Service implements SensorEventListener {
                 VolumeProvider.VOLUME_CONTROL_RELATIVE, 15, 7) {
             @Override
             public void onAdjustVolume(int direction) {
-                if (volumeButtonsEnabled && direction != VolumeProvider.VOLUME_ADJUST_SAME) {
+                if (volumeButtonsEnabled && direction != 0) {
                     // Auto-release delay must exceed Android's key-repeat initial delay (~500 ms)
                     // so the first key-repeat resets the timer before it fires.
                     // 600 ms keeps the button held continuously while the key is held.
-                    if (direction == VolumeProvider.VOLUME_ADJUST_RAISE) {
-                        buttonState = (byte)(buttonState | 0x01);
+                    if (direction > 0) {  // VOLUME_ADJUST_RAISE = 1
+                        buttonState.updateAndGet(b -> b | 0x01);
                         handler.removeCallbacks(releaseVolUp);
                         handler.postDelayed(releaseVolUp, 600);
-                    } else {
-                        buttonState = (byte)(buttonState | 0x02);
+                    } else {              // VOLUME_ADJUST_LOWER = -1
+                        buttonState.updateAndGet(b -> b | 0x02);
                         handler.removeCallbacks(releaseVolDown);
                         handler.postDelayed(releaseVolDown, 600);
                     }
@@ -441,7 +442,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
             for (int i = 0; i < 3; i++) pos = put_float(imu[i], pos, buf);
         }
 
-        buf[pos++] = buttonState;
+        buf[pos++] = (byte) buttonState.get();
 
         p.setData(buf, 0, pos);
         if (socket != null) socket.send(p);
