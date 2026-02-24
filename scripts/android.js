@@ -1,21 +1,23 @@
 'use strict';
 
-// Example script: Android phone → gyroscopic mouse aiming
+// Example script: Android phone → gyroscopic mouse aiming + fire button
 //
-// Hold the phone and move it to aim — yaw controls horizontal movement,
-// pitch controls vertical. Useful for FPS games or desktop pointer control.
+// Move the phone to aim — yaw controls horizontal, pitch controls vertical.
+// Press the FIRE button in the WishIMU app to left-click (bit 0 of buttons bitmask).
 //
-// Requirements:
-//   - Install "FreePIE IMU sender" APK (at /opt/FreePIE/Lib/Android/)
-//   - Open the app, set the destination IP to this machine's IP
-//   - Enable "Send Orientation" in the app settings
-//   - Both devices must be on the same network
+// Compatible with:
+//   - WishIMU app (github.com/communitytranslations/ps3pie)
+//   - FreePIE IMU sender APK (at /opt/FreePIE/Lib/Android/)
+//
+// Setup:
+//   PS3PIE_BIND_HOST=0.0.0.0 node index.js scripts/android.js
+//   Open WishIMU, set destination IP to this machine's IP, tap Start.
 //
 // Tuning:
 //   SENSITIVITY — pixels per radian per frame (22.9 ≈ 0.4 px/°)
 //   SMOOTHING   — increase to reduce jitter, decrease for lower latency
 
-const SENSITIVITY = 300;  // pixels per radian of rotation per frame (22.9 default)
+const SENSITIVITY = 2500;  // pixels per radian of rotation per frame (22.9 default)
                            // (≈ 0.4 px/° × 57.3 °/rad — the Android app sends radians)
 const SMOOTHING   = 0.3;   // EMA smoothing coefficient (0=none, 1=frozen)
 
@@ -37,5 +39,9 @@ module.exports = {
 
         mouse.x = Math.round(smoothYaw   * SENSITIVITY);
         mouse.y = Math.round(smoothPitch * SENSITIVITY);
+
+        // Bit 0 = left click, bit 1 = right click
+        mouse.left  = phone.buttons & 0x01;
+        mouse.right = (phone.buttons >> 1) & 0x01;
     }
 };

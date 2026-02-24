@@ -51,7 +51,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -149,6 +148,7 @@ fun WishImuApp(
     var selectedIndex by remember { mutableIntStateOf(prefs.getInt("index", 0)) }
     var sendOrientation by remember { mutableStateOf(prefs.getBoolean("send_orientation", true)) }
     var sendRaw by remember { mutableStateOf(prefs.getBoolean("send_raw", true)) }
+    var mouseButtons by remember { mutableStateOf(prefs.getBoolean("mouse_buttons", false)) }
     var selectedSampleRateIdx by remember { mutableIntStateOf(initialSampleRateIdx) }
     var isRunning by remember { mutableStateOf(UdpSenderService.started) }
     var showDebug by remember { mutableStateOf(false) }
@@ -224,68 +224,6 @@ fun WishImuApp(
     Scaffold(
         topBar = { TopAppBar(title = { Text("WishIMU") }) }
     ) { padding ->
-        if (isRunning) {
-            // Gun mode: full-screen fire button
-            Column(
-                modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "Sending to ${ip.trim()}:$port",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                errorStr?.let { err ->
-                    Text(
-                        text = err,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(MaterialTheme.colorScheme.error)
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onPress = {
-                                    UdpSenderService.buttonState = 1
-                                    tryAwaitRelease()
-                                    UdpSenderService.buttonState = 0
-                                }
-                            )
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "FIRE",
-                        style = MaterialTheme.typography.displayLarge,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Button(
-                    onClick = {
-                        UdpSenderService.buttonState = 0
-                        onStop()
-                        isRunning = false
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Stop")
-                }
-            }
-        } else {
-        // Config mode
         Column(
             modifier = Modifier
                 .padding(padding)
@@ -372,6 +310,15 @@ fun WishImuApp(
                 Text("Send Raw")
             }
 
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = mouseButtons,
+                    onCheckedChange = { mouseButtons = it },
+                    enabled = !isRunning
+                )
+                Text("Mouse buttons")
+            }
+
             ExposedDropdownMenuBox(
                 expanded = sampleRateExpanded,
                 onExpandedChange = { if (!isRunning) sampleRateExpanded = it }
@@ -423,12 +370,14 @@ fun WishImuApp(
                                 putInt("index", selectedIndex)
                                 putBoolean("send_orientation", sendOrientation)
                                 putBoolean("send_raw", sendRaw)
+                                putBoolean("mouse_buttons", mouseButtons)
                                 putInt("sample_rate", sampleRateId)
                             }
                             onStart(trimmedIp, portInt, selectedIndex, sendOrientation, sendRaw, sampleRateId)
                             isRunning = true
                         }
                     } else {
+                        UdpSenderService.buttonState = 0
                         onStop()
                         isRunning = false
                     }
@@ -451,6 +400,53 @@ fun WishImuApp(
                 )
             }
 
+            // Mouse click buttons — shown only when mouse buttons mode is enabled and running
+            AnimatedVisibility(visible = mouseButtons && isRunning) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(100.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.primary)
+                            .pointerInput(Unit) {
+                                detectTapGestures(onPress = {
+                                    UdpSenderService.buttonState =
+                                        (UdpSenderService.buttonState.toInt() or 0x01).toByte()
+                                    tryAwaitRelease()
+                                    UdpSenderService.buttonState =
+                                        (UdpSenderService.buttonState.toInt() and 0x01.inv()).toByte()
+                                })
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Left Click", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(100.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.secondary)
+                            .pointerInput(Unit) {
+                                detectTapGestures(onPress = {
+                                    UdpSenderService.buttonState =
+                                        (UdpSenderService.buttonState.toInt() or 0x02).toByte()
+                                    tryAwaitRelease()
+                                    UdpSenderService.buttonState =
+                                        (UdpSenderService.buttonState.toInt() and 0x02.inv()).toByte()
+                                })
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Right Click", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(
                     checked = showDebug,
@@ -470,6 +466,5 @@ fun WishImuApp(
 
             Spacer(Modifier.height(16.dp))
         }
-        } // end else (config mode)
     }
 }

@@ -4,24 +4,27 @@
 //
 // Binary Little-Endian protocol, port 5555:
 //   byte  0     : device index (0-15)
-//   byte  1     : flags  (0x01 = SEND_RAW, 0x02 = SEND_ORIENTATION)
+//   byte  1     : flags  (0x01 = SEND_RAW, 0x02 = SEND_ORIENTATION, 0x04 = SEND_BUTTONS)
 //   bytes 2-37  : raw sensor data (only if flag 0x01)
 //                   floatLE × 3 : acc  (ax, ay, az)   — m/s²
 //                   floatLE × 3 : gyro (gx, gy, gz)   — rad/s
 //                   floatLE × 3 : mag  (mx, my, mz)   — µT
 //   bytes 38-49 : orientation   (only if flag 0x02, after raw if both flags set)
-//                   floatLE     : yaw   (Euler Z) — degrees
-//                   floatLE     : pitch (Euler X) — degrees
-//                   floatLE     : roll  (Euler Y) — degrees
+//                   floatLE     : yaw   (Euler Z) — radians
+//                   floatLE     : pitch (Euler X) — radians
+//                   floatLE     : roll  (Euler Y) — radians
+//   byte  N     : button bitmask (only if flag 0x04; bit 0 = fire/left-click)
 //
 // Usage in scripts:
 //   const phone = android[0];     // device index 0
-//   phone.yaw, phone.pitch, phone.roll          // orientation
+//   phone.yaw, phone.pitch, phone.roll          // orientation (radians)
 //   phone.raw.ax, .ay, .az                      // accelerometer
 //   phone.raw.gx, .gy, .gz                      // gyroscope
 //   phone.raw.mx, .my, .mz                      // magnetometer
+//   phone.buttons                               // bitmask (bit 0 = fire)
 //
 // Official app: "FreePIE IMU sender" (APK at /opt/FreePIE/Lib/Android/)
+// Also compatible with WishIMU (github.com/communitytranslations/ps3pie)
 
 const dgram       = require('dgram');
 const EventEmitter = require('events');
@@ -30,6 +33,7 @@ const Plugin       = require('../plugin');
 const DEFAULT_PORT          = 5555;
 const FLAG_SEND_RAW         = 0x01;
 const FLAG_SEND_ORIENTATION = 0x02;
+const FLAG_SEND_BUTTONS     = 0x04;
 
 // Bind to localhost by default — prevents any host on the network from injecting
 // orientation data and controlling mouse/joystick movement.
@@ -40,6 +44,7 @@ function makeDevice() {
     return {
         yaw: 0, pitch: 0, roll: 0,
         raw: { ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 0, mx: 0, my: 0, mz: 0 },
+        buttons: 0,
     };
 }
 
@@ -109,6 +114,11 @@ class AndroidPlugin extends Plugin {
             if (isFinite(yaw))   dev.yaw   = yaw;
             if (isFinite(pitch)) dev.pitch = pitch;
             if (isFinite(roll))  dev.roll  = roll;
+            offset += 12;
+        }
+
+        if ((flags & FLAG_SEND_BUTTONS) && msg.length >= offset + 1) {
+            dev.buttons = msg[offset];
         }
 
         this._emitter.emit('data');
