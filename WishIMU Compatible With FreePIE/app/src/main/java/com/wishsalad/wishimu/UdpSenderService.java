@@ -74,8 +74,6 @@ public class UdpSenderService extends Service implements SensorEventListener {
     private boolean sendRaw;
     private int sampleRate;
     private SensorManager sensorManager;
-    private String targetIp;
-    private int targetPort;
 
     private Thread worker;
     private volatile boolean running;
@@ -257,7 +255,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
     private void startForegroundWithNotification(String ip, int port) {
         Notification notification = buildNotification(
-                "\u2192 " + ip + ":" + port, R.drawable.ic_notify);
+                "→ " + ip + ":" + port, R.drawable.ic_notify);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
@@ -268,6 +266,13 @@ public class UdpSenderService extends Service implements SensorEventListener {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             stop();
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        // START_STICKY can deliver a null intent when the service is restarted after being killed.
+        // Without valid connection parameters there is nothing useful to do.
+        if (intent == null) {
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -284,10 +289,8 @@ public class UdpSenderService extends Service implements SensorEventListener {
                 new IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED);
 
         deviceIndex = intent.getByteExtra("deviceIndex", (byte) 0);
-        targetPort = intent.getIntExtra("port", 5555);
-        targetIp = intent.getStringExtra("toIp");
-        final int port = targetPort;
-        final String ip = targetIp;
+        final int port = intent.getIntExtra("port", 5555);
+        final String ip = intent.getStringExtra("toIp");
 
         sendRaw = intent.getBooleanExtra("sendRaw", true);
         sendOrientation = intent.getBooleanExtra("sendOrientation", true);
@@ -306,7 +309,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
                     p.setAddress(InetAddress.getByName(ip));
                     p.setPort(port);
                     debugError = null;
-                    updateNotification("\u2192 " + ip + ":" + port, R.drawable.ic_notify);
+                    updateNotification("→ " + ip + ":" + port, R.drawable.ic_notify);
 
                     while (running) {
                         synchronized (this) {
@@ -321,7 +324,10 @@ public class UdpSenderService extends Service implements SensorEventListener {
                     setLastError(e.getMessage());
                     if (socket != null) { socket.close(); socket = null; }
                     if (!running) break;
-                    try { Thread.sleep(2000); } catch (InterruptedException ie) { break; }
+                    try {
+                        //noinspection BusyWait
+                        Thread.sleep(2000);
+                    } catch (InterruptedException ie) { break; }
                 } finally {
                     if (socket != null) { socket.close(); socket = null; }
                 }
