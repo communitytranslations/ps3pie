@@ -79,7 +79,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
     private final BroadcastReceiver screen_off_receiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            // Fix: Evitar NullPointerException comparando la constante primero
+            // Compare constant first to avoid NullPointerException
             if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
                 register_sensors();
             }
@@ -119,7 +119,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
         }
     }
 
-    @SuppressWarnings("unused") // Los métodos públicos usados por la Activity se marcan así
+    @SuppressWarnings("unused") // Public methods called by the Activity are marked this way
     public String getLastError() {
         synchronized (this) {
             return lastError;
@@ -196,7 +196,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
         }
         if (worker != null) {
             try {
-                worker.join(500); // Timeout para evitar bloqueos
+                worker.join(500); // Timeout to prevent deadlocks
             } catch (InterruptedException ignored) {
             }
         }
@@ -230,19 +230,18 @@ public class UdpSenderService extends Service implements SensorEventListener {
                 .setContentIntent(pendingIntent)
                 .build();
 
-        // FIX: Verificamos la versión del sistema en tiempo de ejecución
+        // Check API level at runtime to include the foreground service type where required
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Para Android 10 (API 29) en adelante, incluimos el tipo de servicio
+            // Android 10 (API 29) and above: supply the service type
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
-            // Para Android 9 (API 28) y anteriores, usamos el método clásico
+            // Android 9 (API 28) and below: use the classic overload
             startForeground(1, notification);
         }
     }
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         stop();
-        // Fix: Tags únicos y descriptivos
         PowerManager.WakeLock wl = mPowerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG_WAKE_LOCK);
         // WIFI_MODE_FULL_HIGH_PERF deprecated in API 29; use LOW_LATENCY on newer devices
         WifiManager.WifiLock nl = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
@@ -263,7 +262,6 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
         running = true;
 
-        // Fix: Lambda y manejo de excepciones simplificado
         worker = new Thread(() -> {
             try {
                 socket = new DatagramSocket();
@@ -310,7 +308,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
     private int put_float(float f, int pos, byte[] buf) {
         int tmp = Float.floatToIntBits(f);
-        buf[pos++] = (byte) (tmp); // Fix: eliminado tmp >> 0
+        buf[pos++] = (byte) (tmp); // low byte (tmp >> 0 is redundant)
         buf[pos++] = (byte) (tmp >> 8);
         buf[pos++] = (byte) (tmp >> 16);
         buf[pos++] = (byte) (tmp >> 24);
