@@ -302,7 +302,9 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
         stop();
         PowerManager.WakeLock wl = mPowerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG_WAKE_LOCK);
-        // WIFI_MODE_FULL_HIGH_PERF deprecated in API 29; use LOW_LATENCY on newer devices
+        // WIFI_MODE_FULL_HIGH_PERF deprecated in API 31; LOW_LATENCY requires API 29.
+        // minSdk = 28 so the fallback path is needed for API 28-only; suppress is the only option.
+        @SuppressWarnings("deprecation")
         WifiManager.WifiLock nl = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
                 ? mWifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, TAG_WIFI_LOCK)
                 : mWifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, TAG_WIFI_LOCK);
