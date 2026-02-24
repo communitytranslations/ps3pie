@@ -142,12 +142,17 @@ ps3.leftAnalog,     ps3.rightAnalog
 
 ### `android[N]` — Android IMU (UDP)
 
-Receives data from the **FreePIE IMU sender** app (APK at `/opt/FreePIE/Lib/Android/`). Listens on UDP port 5555. Up to 16 devices indexed `android[0]`..`android[15]`.
+Receives data from an Android phone over WiFi. Listens on UDP port 5555. Up to 16 devices indexed `android[0]`..`android[15]`.
+
+**Compatible apps:**
+
+- **WishIMU** (included in this repository under `WishIMU Compatible With FreePIE/`) — the recommended companion app, built for Android 9–16. Features: orientation + raw sensor streaming, on-screen Left Click / Right Click touch buttons, volume hardware buttons as mouse clicks (works over the lock screen). See [scripts/android.js](scripts/android.js) for the matching ps3pie script.
+- **FreePIE IMU sender** (legacy APK) — the original FreePIE companion app; compatible with the same protocol.
 
 ```js
-android[0].yaw          // degrees
-android[0].pitch
-android[0].roll
+android[0].yaw          // radians — Euler Z (from SensorManager.getOrientation)
+android[0].pitch        // radians — Euler X
+android[0].roll         // radians — Euler Y
 android[0].raw.ax       // accelerometer m/s²
 android[0].raw.ay
 android[0].raw.az
@@ -157,6 +162,7 @@ android[0].raw.gz
 android[0].raw.mx       // magnetometer µT
 android[0].raw.my
 android[0].raw.mz
+android[0].buttons      // bitmask — bit 0 = left click, bit 1 = right click
 ```
 
 ### `iphone` — iPhone/iPad IMU (UDP)
@@ -413,6 +419,10 @@ System packages (Ubuntu/Debian):
 ```bash
 sudo apt install libasound2-dev   # required for the midi package
 ```
+
+## AI assistance
+
+The fork development (plugin architecture, koffi migration, filters API, WishIMU app, and all code added after the initial commit) was written in collaboration with [Claude Code](https://claude.ai/code) (Anthropic). Commits that include AI-generated code are marked with `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>` in the git log.
 
 ## Legal
 
