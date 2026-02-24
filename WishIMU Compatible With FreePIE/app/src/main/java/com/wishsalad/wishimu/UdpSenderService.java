@@ -374,10 +374,19 @@ public class UdpSenderService extends Service implements SensorEventListener {
         // MediaSession intercepts volume keys via VolumeProvider even on the lock screen.
         // onKeyDown in MainActivity handles the screen-on case; this handles screen-off.
         // VolumeProvider receives key-press events but NOT key-up, so each event schedules
-        // an auto-release 250 ms later; key-repeat events reset the timer, keeping the
+        // an auto-release 600 ms later; key-repeat events reset the timer, keeping the
         // button held for as long as the physical key is held.
+        //
+        // For the lock-screen path, the session MUST be in STATE_PLAYING so that Android's
+        // MediaSessionStack ranks it as the active session for volume key routing. A session
+        // in STATE_STOPPED is excluded from the priority queue and never receives volume events.
+        // FLAG_HANDLES_MEDIA_BUTTONS is also set so that API 28-30 devices route keys here
+        // (deprecated since API 31 but harmless — it has no effect on newer devices).
         volumeButtonsEnabled = intent.getBooleanExtra("volumeButtons", false);
         mediaSession = new MediaSession(this, "WishIMU");
+        //noinspection deprecation
+        mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS);
+        mediaSession.setCallback(new MediaSession.Callback() {});  // required with FLAG_HANDLES_MEDIA_BUTTONS
         mediaSession.setPlaybackToRemote(new VolumeProvider(
                 VolumeProvider.VOLUME_CONTROL_RELATIVE, 15, 7) {
             @Override
@@ -406,7 +415,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
             }
         });
         mediaSession.setPlaybackState(new PlaybackState.Builder()
-                .setState(PlaybackState.STATE_STOPPED, 0, 0)
+                .setState(PlaybackState.STATE_PLAYING, 0, 0)
                 .build());
         mediaSession.setActive(true);
 
