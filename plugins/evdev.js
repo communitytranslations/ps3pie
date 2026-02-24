@@ -39,14 +39,15 @@ const ioctl = lib.func('ioctl', 'int', ['int', 'ulong', 'long']);
 
 class EvdevDevice {
     constructor(n) {
-        this._path    = `/dev/input/event${n}`;
-        this._fd      = -1;
-        this._timer   = null;
-        this._buf     = Buffer.allocUnsafe(BUF_SIZE * 32);  // up to 32 events per tick
-        this._partial = null;
-        this._emitter = new EventEmitter();
-        this.axes     = {};
-        this.buttons  = {};
+        this._path        = `/dev/input/event${n}`;
+        this._fd          = -1;
+        this._timer       = null;
+        this._buf         = Buffer.allocUnsafe(BUF_SIZE * 32);  // up to 32 events per tick
+        this._partial     = null;
+        this._emitter     = new EventEmitter();
+        this.axes         = {};
+        this.buttons      = {};
+        this._prevButtons = {};
     }
 
     open() {
@@ -123,6 +124,18 @@ class EvdevDevice {
     }
 
     on(event, listener) { this._emitter.on(event, listener); }
+
+    /**
+     * Returns true only on the rising edge (0→1 transition) of a button.
+     * Subsequent calls in the same loop return false until the button is
+     * released and pressed again.
+     */
+    getPressed(code) {
+        const val  = this.buttons[code] ?? 0;
+        const prev = this._prevButtons[code] ?? 0;
+        this._prevButtons[code] = val;
+        return val === 1 && prev === 0;
+    }
 }
 
 class EvdevPlugin extends Plugin {

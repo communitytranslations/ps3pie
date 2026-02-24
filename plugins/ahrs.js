@@ -83,8 +83,12 @@ class AhrsPlugin extends Plugin {
                 this._global.pitch = pitch;
                 this._global.roll  = roll;
                 this._emitter.emit('data');
+                this._buf = this._buf.subarray(FRAME_SIZE);  // consume aligned frame
+            } else {
+                // NaN/Inf indicates framing desync (byte loss on serial line).
+                // Discard 1 byte and retry — searches for the next valid frame boundary.
+                this._buf = this._buf.subarray(1);
             }
-            this._buf = this._buf.subarray(FRAME_SIZE);
         }
     }
 

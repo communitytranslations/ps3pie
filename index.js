@@ -13,8 +13,9 @@ const MousePlugin   = require('./plugins/mouse');
 const AndroidPlugin = require('./plugins/android');
 const IosPlugin     = require('./plugins/ios');
 const MidiPlugin    = require('./plugins/midi');
-const AhrsPlugin    = require('./plugins/ahrs');
-const FreeImuPlugin = require('./plugins/freeimu');
+const AhrsPlugin      = require('./plugins/ahrs');
+const FreeImuPlugin   = require('./plugins/freeimu');
+const OpentrackPlugin = require('./plugins/opentrack');
 
 const PLUGINS = [
     new Ps3Plugin(),
@@ -27,6 +28,7 @@ const PLUGINS = [
     new MidiPlugin(),
     new AhrsPlugin(),
     new FreeImuPlugin(),
+    new OpentrackPlugin(),
 ];
 
 // Build sandbox from each plugin's globals

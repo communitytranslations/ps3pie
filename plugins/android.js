@@ -31,6 +31,11 @@ const DEFAULT_PORT          = 5555;
 const FLAG_SEND_RAW         = 0x01;
 const FLAG_SEND_ORIENTATION = 0x02;
 
+// Bind to localhost by default — prevents any host on the network from injecting
+// orientation data and controlling mouse/joystick movement.
+// Set PS3PIE_BIND_HOST=0.0.0.0 to accept packets from the network (e.g. real phone).
+const BIND_HOST = process.env.PS3PIE_BIND_HOST || '127.0.0.1';
+
 function makeDevice() {
     return {
         yaw: 0, pitch: 0, roll: 0,
@@ -68,8 +73,8 @@ class AndroidPlugin extends Plugin {
                 this._socket = null;
                 resolve();   // non-fatal: remaining plugins keep working
             });
-            this._socket.bind(DEFAULT_PORT, '0.0.0.0', () => {
-                console.info(`[android] Listening on UDP port ${DEFAULT_PORT}`);
+            this._socket.bind(DEFAULT_PORT, BIND_HOST, () => {
+                console.info(`[android] Listening on UDP ${BIND_HOST}:${DEFAULT_PORT}`);
                 resolve();
             });
         });
@@ -98,9 +103,12 @@ class AndroidPlugin extends Plugin {
         }
 
         if ((flags & FLAG_SEND_ORIENTATION) && msg.length >= offset + 12) {
-            dev.yaw   = msg.readFloatLE(offset);  offset += 4;
-            dev.pitch = msg.readFloatLE(offset);  offset += 4;
-            dev.roll  = msg.readFloatLE(offset);  offset += 4;
+            const yaw   = msg.readFloatLE(offset);
+            const pitch = msg.readFloatLE(offset + 4);
+            const roll  = msg.readFloatLE(offset + 8);
+            if (isFinite(yaw))   dev.yaw   = yaw;
+            if (isFinite(pitch)) dev.pitch = pitch;
+            if (isFinite(roll))  dev.roll  = roll;
         }
 
         this._emitter.emit('data');

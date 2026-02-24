@@ -18,6 +18,26 @@ Virtual devices (/dev/uinput)
 
 Scripts are plain JavaScript files with a `loop()` export. The engine calls `loop()` every time any connected device produces new data. Output state is diffed each loop — only changed events are emitted.
 
+## Security
+
+**Scripts are trusted code.** Running `node index.js script.js` is equivalent to running `node script.js` directly — the script has full access to the system. Do not run scripts from untrusted sources.
+
+**UDP plugins bind to `127.0.0.1` by default.** The Android and iPhone IMU plugins only accept packets from localhost. To receive data from a real phone over WiFi you must explicitly opt in:
+
+```bash
+PS3PIE_BIND_HOST=0.0.0.0 node index.js scripts/android.js
+```
+
+On shared or public networks, combine this with an OS-level firewall rule to allow only your device's IP:
+
+```bash
+# Allow only the phone (replace with its actual IP):
+sudo ufw allow from 192.168.1.42 to any port 5555 proto udp
+sudo ufw allow from 192.168.1.42 to any port 10552 proto udp
+```
+
+The FreePIE network protocol has no built-in authentication. The firewall rule is the correct solution — it enforces source IP at the OS level without requiring any protocol changes or breaking compatibility with the FreePIE app.
+
 ## Quick start
 
 ```bash
@@ -87,6 +107,10 @@ pad.buttons[0x13b]   // BTN_START  (Start / Menu)
 pad.buttons[0x13c]   // BTN_MODE   (Guide / PS / Xbox)
 pad.buttons[0x13d]   // BTN_THUMBL (L3)
 pad.buttons[0x13e]   // BTN_THUMBR (R3)
+
+// Rising-edge detection — true only on the frame the button is pressed
+pad.getPressed(0x130)   // true once per press of BTN_SOUTH (A / Cross)
+pad.getPressed(0x131)   // BTN_EAST, etc.
 ```
 
 The device is grabbed exclusively (`EVIOCGRAB`) — the physical gamepad is hidden from all other applications while ps3pie runs.
@@ -144,6 +168,33 @@ iphone.yaw     // degrees
 iphone.pitch
 iphone.roll
 ```
+
+### `opentrack` — OpenTrack / FreeTrack head-tracker (UDP)
+
+Receives data from **OpenTrack** or any compatible sender (e.g. **HeadMob** Android app). Listens on UDP port 4242 using the standard OpenTrack "UDP over network" binary format.
+
+```js
+opentrack.yaw      // degrees (-180..+180)
+opentrack.pitch    // degrees (-90..+90)
+opentrack.roll     // degrees (-180..+180)
+opentrack.x        // cm — head position left/right
+opentrack.y        // cm — head position up/down
+opentrack.z        // cm — head position forward/back
+```
+
+To receive from the network (OpenTrack on another PC, or HeadMob on Android):
+
+```bash
+PS3PIE_BIND_HOST=0.0.0.0 node index.js scripts/opentrack.js
+```
+
+To change the port (default 4242):
+
+```bash
+PS3PIE_OPENTRACK_PORT=4242 node index.js scripts/opentrack.js
+```
+
+**OpenTrack setup**: Output → UDP over network → Host = this machine's IP, Port = 4242.
 
 ### `midi[N]` — MIDI input (ALSA)
 
@@ -272,21 +323,31 @@ Both `keyboard` and `keyboardEvents` only accept names defined in `uinput.js`:
 
 ```
 esc   one  two  three  four  five  six  seven  eight  nine  zero
-tab   enter  shift  space
-f1   f2   f3
-ralt
+minus  equals  backspace
+tab   enter  space  capslock
+a  b  c  d  e  f  g  h  i  j  k  l  m
+n  o  p  q  r  s  t  u  v  w  x  y  z
+comma  period
+
+lctrl  lshift  lalt  shift  rctrl  ralt  super
+
+f1  f2  f3  f4  f5  f6  f7  f8  f9  f10  f11  f12
+
 home  end  pageUp  pageDown
-up   down  left  right
+up  down  left  right
+insert  del
 ```
 
 ## Filters API
 
 ```js
 // Exponential Moving Average — smoothing ∈ [0,1]: 0=none, 1=frozen
-filters.simple(x, smoothing, key)
+filters.simple(x, smoothing)        // key auto-derived from call site
+filters.simple(x, smoothing, key)   // explicit key
 
 // Frame-to-frame delta (returns 0 on first call)
-filters.delta(x, key)
+filters.delta(x)       // key auto-derived
+filters.delta(x, key)  // explicit key
 
 // Dead zone: returns 0 if |x| < zone, else x unchanged
 filters.deadband(x, zone)
@@ -300,14 +361,16 @@ filters.mapRange(x, x0, x1, y0, y1)
 filters.ensureMapRange(x, x0, x1, y0, y1)
 
 // Boolean timer: returns true once after ms milliseconds of active=true
-filters.stopWatch(active, ms, key)
+filters.stopWatch(active, ms)       // key auto-derived
+filters.stopWatch(active, ms, key)  // explicit key
 
 // Unwrap a rotating sensor — prevents jumps at ±180°/±π
-filters.continuousRotation(x, key)              // radians (default)
-filters.continuousRotation(x, 'degrees', key)   // degrees
+filters.continuousRotation(x)                   // radians, auto-key
+filters.continuousRotation(x, 'degrees')        // degrees, auto-key
+filters.continuousRotation(x, unit, key)        // explicit unit and key
 ```
 
-Each stateful filter (`simple`, `delta`, `stopWatch`, `continuousRotation`) requires a unique string `key` per usage site to keep its state.
+Stateful filters (`simple`, `delta`, `stopWatch`, `continuousRotation`) maintain separate state per call site. The `key` parameter is optional — when omitted, it is automatically derived from the source location so each call site has its own independent state. Pass an explicit `key` string when you want two call sites to share state.
 
 ## Example scripts
 
@@ -316,6 +379,7 @@ Each stateful filter (`simple`, `delta`, `stopWatch`, `continuousRotation`) requ
 | `scripts/evdev.js` | Generic gamepad → virtual joystick with deadband and axis curves |
 | `scripts/mouse.js` | Gamepad right stick → mouse, face buttons → mouse clicks |
 | `scripts/android.js` | Android phone gyroscope → gyroscopic mouse aiming |
+| `scripts/opentrack.js` | OpenTrack / HeadMob head-tracker → mouse aiming |
 | `scripts/midi.js` | MIDI CC knobs → axes, MIDI notes → buttons |
 | `scripts/descent.js` | Original PS3 → Descent/Overload mapping |
 

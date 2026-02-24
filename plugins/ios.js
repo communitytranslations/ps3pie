@@ -23,6 +23,9 @@ const Plugin       = require('../plugin');
 
 const DEFAULT_PORT = 10552;
 
+// Bind to localhost by default. Set PS3PIE_BIND_HOST=0.0.0.0 to accept from network.
+const BIND_HOST = process.env.PS3PIE_BIND_HOST || '127.0.0.1';
+
 class IosPlugin extends Plugin {
     constructor() {
         super();
@@ -49,8 +52,8 @@ class IosPlugin extends Plugin {
                 this._socket = null;
                 resolve();   // non-fatal
             });
-            this._socket.bind(DEFAULT_PORT, '0.0.0.0', () => {
-                console.info(`[ios] Listening on UDP port ${DEFAULT_PORT}`);
+            this._socket.bind(DEFAULT_PORT, BIND_HOST, () => {
+                console.info(`[ios] Listening on UDP ${BIND_HOST}:${DEFAULT_PORT}`);
                 resolve();
             });
         });
@@ -61,7 +64,10 @@ class IosPlugin extends Plugin {
         if (!line) return;
 
         if (!this._headerParsed) {
-            // First packet: CSV header
+            // First packet: CSV header. Mark as parsed regardless of validity — one attempt only.
+            // Without this, any stray packet on port 10552 (scanner, ADB, etc.) permanently
+            // blocks all subsequent data packets from being parsed.
+            this._headerParsed = true;
             const cols = line.split(',');
             this._rollIdx  = cols.indexOf('Roll');
             this._pitchIdx = cols.indexOf('Pitch');
@@ -69,7 +75,6 @@ class IosPlugin extends Plugin {
             if (this._rollIdx < 0 || this._pitchIdx < 0 || this._yawIdx < 0) {
                 console.warn(`[ios] Unexpected header: ${line}`);
             } else {
-                this._headerParsed = true;
                 console.info(`[ios] Header parsed: Roll@${this._rollIdx} Pitch@${this._pitchIdx} Yaw@${this._yawIdx}`);
             }
             return;

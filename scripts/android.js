@@ -12,20 +12,21 @@
 //   - Both devices must be on the same network
 //
 // Tuning:
-//   SENSITIVITY — increase for faster movement, decrease for precision
+//   SENSITIVITY — pixels per radian per frame (22.9 ≈ 0.4 px/°)
 //   SMOOTHING   — increase to reduce jitter, decrease for lower latency
 
-const SENSITIVITY = 0.4;   // pixels per degree of rotation per frame
+const SENSITIVITY = 300;  // pixels per radian of rotation per frame (22.9 default)
+                           // (≈ 0.4 px/° × 57.3 °/rad — the Android app sends radians)
 const SMOOTHING   = 0.3;   // EMA smoothing coefficient (0=none, 1=frozen)
 
 const phone = android[0];  // device index 0
 
 module.exports = {
     loop() {
-        // continuousRotation unwraps the angle to prevent jumps at the ±180° boundary
-        // delta gives the frame-to-frame change in the unwrapped angle
-        const yawCont   = filters.continuousRotation(phone.yaw,   'degrees', 'yaw');
-        const pitchCont = filters.continuousRotation(phone.pitch, 'degrees', 'pitch');
+        // continuousRotation unwraps the angle to prevent jumps at the ±π boundary.
+        // The FreePIE Android app uses SensorManager.getOrientation() which returns radians.
+        const yawCont   = filters.continuousRotation(phone.yaw,   'radians', 'yaw');
+        const pitchCont = filters.continuousRotation(phone.pitch, 'radians', 'pitch');
 
         const dyaw   = filters.delta(yawCont,   'yaw');
         const dpitch = filters.delta(pitchCont, 'pitch');
