@@ -49,7 +49,11 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
     private static final byte SEND_RAW = 0x01;
     private static final byte SEND_ORIENTATION = 0x02;
+    private static final byte SEND_BUTTONS = 0x04;
     private static final byte SEND_NONE = 0x00;
+
+    /** Button bitmask written by MainActivity and read by the worker thread. Bit 0 = fire. */
+    public static volatile byte buttonState = 0;
     private static final String TAG_WAKE_LOCK = "FreePIE:WakeLock";
     private static final String TAG_WIFI_LOCK = "FreePIE:WifiLock";
 
@@ -79,7 +83,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
     private WifiManager.WifiLock wifiLock;
     private PowerManager.WakeLock wakeLock;
     private final DatagramPacket p = new DatagramPacket(new byte[]{}, 0);
-    private final byte[] buf = new byte[50];
+    private final byte[] buf = new byte[52]; // 50 sensor bytes + 1 buttons byte + 1 spare
 
     private String lastError;
 
@@ -191,6 +195,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
     public void stop() {
         started = false;
+        buttonState = 0;
         try {
             unregisterReceiver(screen_off_receiver);
         } catch (Exception e) {
@@ -341,7 +346,8 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
     private byte getFlagByte(boolean raw, boolean orientation) {
         return (byte) ((raw ? SEND_RAW : SEND_NONE) |
-                (orientation ? SEND_ORIENTATION : SEND_NONE));
+                (orientation ? SEND_ORIENTATION : SEND_NONE) |
+                SEND_BUTTONS);
     }
 
     private int put_float(float f, int pos, byte[] buf) {
@@ -367,6 +373,8 @@ public class UdpSenderService extends Service implements SensorEventListener {
         if (sendOrientation) {
             for (int i = 0; i < 3; i++) pos = put_float(imu[i], pos, buf);
         }
+
+        buf[pos++] = buttonState;
 
         p.setData(buf, 0, pos);
         if (socket != null) socket.send(p);
