@@ -42,6 +42,8 @@ public class UdpSenderService extends Service implements SensorEventListener {
     private PowerManager mPowerManager;
     private WifiManager mWifiManager;
 
+    public static final String ACTION_STOP = "ACTION_STOP";
+
     private static final byte SEND_RAW = 0x01;
     private static final byte SEND_ORIENTATION = 0x02;
     private static final byte SEND_NONE = 0x00;
@@ -164,7 +166,15 @@ public class UdpSenderService extends Service implements SensorEventListener {
         mPowerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         mWifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        enableNotification();
+        NotificationChannel serviceChannel = new NotificationChannel(
+                CHANNEL_ID,
+                "Foreground Service Channel",
+                NotificationManager.IMPORTANCE_LOW
+        );
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) {
+            manager.createNotificationChannel(serviceChannel);
+        }
     }
 
     @Override
@@ -208,39 +218,40 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
     public static final String CHANNEL_ID = "ForegroundServiceChannel";
 
-    private void enableNotification() {
-        NotificationChannel serviceChannel = new NotificationChannel(
-                CHANNEL_ID,
-                "Foreground Service Channel",
-                NotificationManager.IMPORTANCE_HIGH
-        );
+    private void startForegroundWithNotification(String ip, int port) {
+        Intent openIntent = new Intent(this, MainActivity.class);
+        PendingIntent openPending = PendingIntent.getActivity(this,
+                0, openIntent, PendingIntent.FLAG_IMMUTABLE);
 
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        if (manager != null) {
-            manager.createNotificationChannel(serviceChannel);
-        }
-
-        Intent notificationIntent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this,
-                0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
+        Intent stopIntent = new Intent(this, UdpSenderService.class);
+        stopIntent.setAction(ACTION_STOP);
+        PendingIntent stopPending = PendingIntent.getService(this,
+                0, stopIntent, PendingIntent.FLAG_IMMUTABLE);
 
         Notification notification = new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("WishIMU Running")
-                .setContentText("Sending sensor data via UDP")
-                .setContentIntent(pendingIntent)
+                .setContentTitle("WishIMU")
+                .setContentText("\u2192 " + ip + ":" + port)
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentIntent(openPending)
+                .setOngoing(true)
+                .addAction(new Notification.Action.Builder(
+                        null, "Stop", stopPending).build())
                 .build();
 
-        // Check API level at runtime to include the foreground service type where required
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Android 10 (API 29) and above: supply the service type
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
-            // Android 9 (API 28) and below: use the classic overload
             startForeground(1, notification);
         }
     }
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            stop();
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
         stop();
         PowerManager.WakeLock wl = mPowerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG_WAKE_LOCK);
         // WIFI_MODE_FULL_HIGH_PERF deprecated in API 29; use LOW_LATENCY on newer devices
@@ -259,6 +270,9 @@ public class UdpSenderService extends Service implements SensorEventListener {
         sendRaw = intent.getBooleanExtra("sendRaw", true);
         sendOrientation = intent.getBooleanExtra("sendOrientation", true);
         sampleRate = intent.getIntExtra("sampleRate", SensorManager.SENSOR_DELAY_FASTEST);
+
+        // Call startForeground early to satisfy Android's 5-second foreground requirement
+        startForegroundWithNotification(ip, port);
 
         running = true;
 
