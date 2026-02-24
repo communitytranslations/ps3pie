@@ -1,11 +1,16 @@
 package com.wishsalad.wishimu
 
+import android.Manifest
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.content.edit
 import android.hardware.SensorManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
@@ -42,12 +47,34 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
+import java.net.NetworkInterface
 import java.util.Locale
+
+private fun getLocalIpAddress(): String {
+    try {
+        val interfaces = NetworkInterface.getNetworkInterfaces() ?: return "—"
+        for (iface in interfaces.asSequence()) {
+            if (iface.isLoopback || !iface.isUp) continue
+            for (addr in iface.inetAddresses.asSequence()) {
+                val host = addr.hostAddress ?: continue
+                if (!addr.isLoopbackAddress && !host.contains(':')) return host
+            }
+        }
+    } catch (_: Exception) {}
+    return "—"
+}
 
 private data class SampleRateOption(val sensorDelayId: Int, val label: String)
 
@@ -87,7 +114,14 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun WishImuTheme(content: @Composable () -> Unit) {
-    MaterialTheme(content = content)
+    val darkTheme = isSystemInDarkTheme()
+    val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val ctx = LocalContext.current
+        if (darkTheme) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+    } else {
+        if (darkTheme) darkColorScheme() else lightColorScheme()
+    }
+    MaterialTheme(colorScheme = colorScheme, content = content)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -100,6 +134,7 @@ fun WishImuApp(
     val savedSampleRateId = prefs.getInt("sample_rate", SensorManager.SENSOR_DELAY_FASTEST)
     val initialSampleRateIdx = SAMPLE_RATES.indexOfFirst { it.sensorDelayId == savedSampleRateId }.coerceAtLeast(0)
 
+    val localIp = remember { getLocalIpAddress() }
     var ip by remember { mutableStateOf(prefs.getString("ip", "192.168.1.1")!!) }
     var port by remember { mutableStateOf(prefs.getString("port", "5555")!!) }
     var selectedIndex by remember { mutableIntStateOf(prefs.getInt("index", 0)) }
@@ -108,6 +143,8 @@ fun WishImuApp(
     var selectedSampleRateIdx by remember { mutableIntStateOf(initialSampleRateIdx) }
     var isRunning by remember { mutableStateOf(UdpSenderService.started) }
     var showDebug by remember { mutableStateOf(false) }
+    var ipError  by remember { mutableStateOf<String?>(null) }
+    var errorStr by remember { mutableStateOf<String?>(null) }
 
     var accStr by remember { mutableStateOf("") }
     var gyrStr by remember { mutableStateOf("") }
@@ -117,6 +154,19 @@ fun WishImuApp(
     var indexExpanded by remember { mutableStateOf(false) }
     var sampleRateExpanded by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    val notifLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* No-op: service works even if user denies */ }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     // Sync running state on every resume — picks up stops triggered from the notification
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -125,6 +175,17 @@ fun WishImuApp(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Polls UdpSenderService.debugError at 1 Hz while the service is running
+    LaunchedEffect(isRunning) {
+        if (!isRunning) return@LaunchedEffect
+        while (true) {
+            delay(1000)
+            val err = UdpSenderService.debugError
+            if (err != null) errorStr = err
+            else if (errorStr != null) errorStr = null   // Reconnected successfully
+        }
     }
 
     // Debug polling coroutine — canceled and restarted whenever isRunning or showDebug changes
@@ -165,11 +226,20 @@ fun WishImuApp(
 
             OutlinedTextField(
                 value = ip,
-                onValueChange = { ip = it },
+                onValueChange = { ip = it; ipError = null },
                 label = { Text("IP Address") },
+                isError = ipError != null,
+                supportingText = ipError?.let { msg -> { Text(msg) } },
                 enabled = !isRunning,
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
+            )
+
+            Text(
+                text = "This device: $localIp",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp)
             )
 
             OutlinedTextField(
@@ -265,18 +335,28 @@ fun WishImuApp(
             Button(
                 onClick = {
                     if (!isRunning) {
-                        val portInt = port.toIntOrNull() ?: 5555
-                        val sampleRateId = SAMPLE_RATES[selectedSampleRateIdx].sensorDelayId
-                        prefs.edit {
-                            putString("ip", ip)
-                            putString("port", port)
-                            putInt("index", selectedIndex)
-                            putBoolean("send_orientation", sendOrientation)
-                            putBoolean("send_raw", sendRaw)
-                            putInt("sample_rate", sampleRateId)
+                        val trimmedIp = ip.trim()
+                        val isValidIp = trimmedIp.isNotEmpty() &&
+                            Regex("""^\d{1,3}(\.\d{1,3}){3}$""").matches(trimmedIp)
+                        if (!isValidIp) {
+                            ipError = "Enter a valid IPv4 address"
+                        } else {
+                            ipError = null
+                            errorStr = null
+                            UdpSenderService.debugError = null
+                            val portInt = port.toIntOrNull() ?: 5555
+                            val sampleRateId = SAMPLE_RATES[selectedSampleRateIdx].sensorDelayId
+                            prefs.edit {
+                                putString("ip", trimmedIp)
+                                putString("port", port)
+                                putInt("index", selectedIndex)
+                                putBoolean("send_orientation", sendOrientation)
+                                putBoolean("send_raw", sendRaw)
+                                putInt("sample_rate", sampleRateId)
+                            }
+                            onStart(trimmedIp, portInt, selectedIndex, sendOrientation, sendRaw, sampleRateId)
+                            isRunning = true
                         }
-                        onStart(ip, portInt, selectedIndex, sendOrientation, sendRaw, sampleRateId)
-                        isRunning = true
                     } else {
                         onStop()
                         isRunning = false
@@ -289,6 +369,15 @@ fun WishImuApp(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (isRunning) "Stop" else "Start")
+            }
+
+            errorStr?.let { err ->
+                Text(
+                    text = err,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {

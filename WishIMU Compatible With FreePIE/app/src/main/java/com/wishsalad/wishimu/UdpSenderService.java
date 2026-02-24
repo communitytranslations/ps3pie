@@ -38,6 +38,9 @@ public class UdpSenderService extends Service implements SensorEventListener {
     public static final float[] debugMag = new float[3];
     public static final float[] debugImu = new float[3];
 
+    /** Last worker error, readable by the Activity without binding. Null when OK. */
+    public static volatile String debugError = null;
+
     private final IBinder mBinder = new MyBinder();
     private PowerManager mPowerManager;
     private WifiManager mWifiManager;
@@ -129,9 +132,8 @@ public class UdpSenderService extends Service implements SensorEventListener {
     }
 
     private void setLastError(String e) {
-        synchronized (this) {
-            lastError = e;
-        }
+        synchronized (this) { lastError = e; }
+        debugError = e;
     }
 
     @SuppressWarnings("unused")
@@ -274,27 +276,33 @@ public class UdpSenderService extends Service implements SensorEventListener {
         // Call startForeground early to satisfy Android's 5-second foreground requirement
         startForegroundWithNotification(ip, port);
 
+        debugError = null;
         running = true;
 
         worker = new Thread(() -> {
-            try {
-                socket = new DatagramSocket();
-                p.setAddress(InetAddress.getByName(ip));
-                p.setPort(port);
+            while (running) {
+                try {
+                    socket = new DatagramSocket();
+                    p.setAddress(InetAddress.getByName(ip));
+                    p.setPort(port);
+                    debugError = null;          // Connection established, clear previous error
 
-                while (running) {
-                    synchronized (this) {
-                        this.wait();
-                        if (running) Send();
+                    while (running) {
+                        synchronized (this) {
+                            this.wait();
+                            if (running) Send();
+                        }
                     }
-                }
-            } catch (InterruptedException | IOException e) {
-                Log.e("UDP", "Worker thread error", e);
-                setLastError("Communication error: " + e.getMessage());
-            } finally {
-                if (socket != null) {
-                    socket.close();
-                    socket = null;
+                } catch (InterruptedException e) {
+                    break;                      // stop() notified: clean exit
+                } catch (IOException e) {
+                    Log.e("UDP", "Worker error, retrying in 2s", e);
+                    setLastError(e.getMessage());
+                    if (socket != null) { socket.close(); socket = null; }
+                    if (!running) break;
+                    try { Thread.sleep(2000); } catch (InterruptedException ie) { break; }
+                } finally {
+                    if (socket != null) { socket.close(); socket = null; }
                 }
             }
         });
