@@ -174,8 +174,9 @@ public class UdpSenderService extends Service implements SensorEventListener {
         NotificationChannel serviceChannel = new NotificationChannel(
                 CHANNEL_ID,
                 "Foreground Service Channel",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
         );
+        serviceChannel.setSound(null, null); // Show status bar icon without making a sound
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager != null) {
             manager.createNotificationChannel(serviceChannel);
