@@ -15,9 +15,15 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.media.AudioManager;
+import android.media.VolumeProvider;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.net.wifi.WifiManager;
 import android.os.Binder;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
 
@@ -54,6 +60,9 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
     /** Button bitmask written by MainActivity and read by the worker thread. Bit 0 = fire. */
     public static volatile byte buttonState = 0;
+
+    /** True when volume buttons should be intercepted as mouse clicks. Updated by MainActivity. */
+    public static volatile boolean volumeButtonsEnabled = false;
     private static final String TAG_WAKE_LOCK = "FreePIE:WakeLock";
     private static final String TAG_WIFI_LOCK = "FreePIE:WifiLock";
 
@@ -74,6 +83,12 @@ public class UdpSenderService extends Service implements SensorEventListener {
     private boolean sendRaw;
     private int sampleRate;
     private SensorManager sensorManager;
+
+    private MediaSession mediaSession;
+    // Schedules button-release events when no key-up is available (VolumeProvider only gets press)
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable releaseVolUp   = () -> buttonState = (byte)(buttonState & ~0x01);
+    private final Runnable releaseVolDown = () -> buttonState = (byte)(buttonState & ~0x02);
 
     private Thread worker;
     private volatile boolean running;
@@ -193,7 +208,14 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
     public void stop() {
         started = false;
+        handler.removeCallbacks(releaseVolUp);
+        handler.removeCallbacks(releaseVolDown);
         buttonState = 0;
+        if (mediaSession != null) {
+            mediaSession.setActive(false);
+            mediaSession.release();
+            mediaSession = null;
+        }
         try {
             unregisterReceiver(screen_off_receiver);
         } catch (Exception e) {
@@ -345,6 +367,42 @@ public class UdpSenderService extends Service implements SensorEventListener {
         // 4-hour safety timeout. In normal use stop() releases the lock well before this.
         // The timeout only fires if the process dies without calling onDestroy() (crash, OOM).
         wakeLock.acquire(4 * 60 * 60 * 1000L);
+
+        // MediaSession intercepts volume keys via VolumeProvider even on the lock screen.
+        // onKeyDown in MainActivity handles the screen-on case; this handles screen-off.
+        // VolumeProvider receives key-press events but NOT key-up, so each event schedules
+        // an auto-release 250 ms later; key-repeat events reset the timer, keeping the
+        // button held for as long as the physical key is held.
+        volumeButtonsEnabled = intent.getBooleanExtra("volumeButtons", false);
+        mediaSession = new MediaSession(this, "WishIMU");
+        mediaSession.setPlaybackToRemote(new VolumeProvider(
+                VolumeProvider.VOLUME_CONTROL_RELATIVE, 15, 7) {
+            @Override
+            public void onAdjustVolume(int direction) {
+                if (volumeButtonsEnabled && direction != VolumeProvider.VOLUME_ADJUST_SAME) {
+                    if (direction == VolumeProvider.VOLUME_ADJUST_RAISE) {
+                        buttonState = (byte)(buttonState | 0x01);
+                        handler.removeCallbacks(releaseVolUp);
+                        handler.postDelayed(releaseVolUp, 250);
+                    } else {
+                        buttonState = (byte)(buttonState | 0x02);
+                        handler.removeCallbacks(releaseVolDown);
+                        handler.postDelayed(releaseVolDown, 250);
+                    }
+                } else {
+                    // Volume buttons mode is off — let the system adjust volume normally
+                    AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+                    if (am != null) {
+                        am.adjustSuggestedStreamVolume(direction,
+                                AudioManager.USE_DEFAULT_STREAM_TYPE, AudioManager.FLAG_SHOW_UI);
+                    }
+                }
+            }
+        });
+        mediaSession.setPlaybackState(new PlaybackState.Builder()
+                .setState(PlaybackState.STATE_STOPPED, 0, 0)
+                .build());
+        mediaSession.setActive(true);
 
         started = true;
         return START_STICKY;

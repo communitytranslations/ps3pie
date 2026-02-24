@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity() {
             WishImuTheme {
                 WishImuApp(
                     prefs = prefs,
-                    onStart = { ip, port, index, sendOrientation, sendRaw, sampleRateId ->
+                    onStart = { ip, port, index, sendOrientation, sendRaw, sampleRateId, volButtons ->
                         startForegroundService(
                             Intent(this, UdpSenderService::class.java).apply {
                                 putExtra("toIp", ip)
@@ -127,6 +127,7 @@ class MainActivity : ComponentActivity() {
                                 putExtra("sendOrientation", sendOrientation)
                                 putExtra("sendRaw", sendRaw)
                                 putExtra("sampleRate", sampleRateId)
+                                putExtra("volumeButtons", volButtons)
                             }
                         )
                     },
@@ -189,7 +190,7 @@ fun WishImuTheme(content: @Composable () -> Unit) {
 @Composable
 fun WishImuApp(
     prefs: SharedPreferences,
-    onStart: (ip: String, port: Int, index: Int, sendOrientation: Boolean, sendRaw: Boolean, sampleRateId: Int) -> Unit,
+    onStart: (ip: String, port: Int, index: Int, sendOrientation: Boolean, sendRaw: Boolean, sampleRateId: Int, volumeButtons: Boolean) -> Unit,
     onStop: () -> Unit
 ) {
     val savedSampleRateId = prefs.getInt("sample_rate", SensorManager.SENSOR_DELAY_FASTEST)
@@ -243,9 +244,13 @@ fun WishImuApp(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Route volume keys to buttonState (not system volume) when running with volume buttons enabled
+    // Route volume keys to buttonState instead of system volume when the feature is active.
+    // MainActivity.volumeButtonsActive covers the screen-ON case (onKeyDown intercepts keys).
+    // UdpSenderService.volumeButtonsEnabled covers the screen-OFF/locked case (MediaSession
+    // VolumeProvider intercepts keys at the audio routing level, before any Activity focus).
     SideEffect {
         MainActivity.volumeButtonsActive = volumeButtons && isRunning
+        UdpSenderService.volumeButtonsEnabled = volumeButtons && isRunning
     }
 
     // Show app over lock screen and keep screen on while volume buttons mode is active
@@ -457,7 +462,7 @@ fun WishImuApp(
                                 putBoolean("mouse_buttons", mouseButtons)
                                 putInt("sample_rate", sampleRateId)
                             }
-                            onStart(trimmedIp, portInt, selectedIndex, sendOrientation, sendRaw, sampleRateId)
+                            onStart(trimmedIp, portInt, selectedIndex, sendOrientation, sendRaw, sampleRateId, volumeButtons)
                             isRunning = true
                         }
                     } else {
@@ -589,6 +594,7 @@ fun WishImuApp(
                         onCheckedChange = {
                             volumeButtons = it
                             prefs.edit { putBoolean("volume_buttons", it) }
+                            UdpSenderService.volumeButtonsEnabled = it && isRunning
                         }
                     )
                 }
