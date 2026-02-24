@@ -4,19 +4,19 @@ plugins {
 }
 
 android {
-    namespace 'com.wishsalad.wishimu'
-    compileSdkVersion 35
+    namespace = 'com.wishsalad.wishimu'
+    compileSdk = 35
     defaultConfig {
-        applicationId "com.wishsalad.wishimu"
-        minSdkVersion 28
-        targetSdkVersion 35
-        versionCode 1
-        versionName "1.0"
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        applicationId = "com.wishsalad.wishimu"
+        minSdk = 28
+        targetSdk = 35
+        versionCode = 1
+        versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -24,6 +24,10 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+
+    tasks.withType(JavaCompile) {
+        options.compilerArgs << "-Xlint:deprecation"
     }
 }
 
