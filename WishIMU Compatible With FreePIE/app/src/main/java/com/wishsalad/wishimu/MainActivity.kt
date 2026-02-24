@@ -1,6 +1,7 @@
 package com.wishsalad.wishimu
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
@@ -8,6 +9,8 @@ import android.os.Build
 import androidx.core.content.edit
 import android.hardware.SensorManager
 import android.os.Bundle
+import android.view.KeyEvent
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +26,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -30,15 +35,21 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -94,6 +105,12 @@ private val SAMPLE_RATES = listOf(
 )
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        /** True while volume buttons should route to buttonState instead of system volume. */
+        @Volatile var volumeButtonsActive = false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getPreferences(MODE_PRIVATE)
@@ -117,6 +134,42 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (volumeButtonsActive) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_VOLUME_UP -> {
+                    UdpSenderService.buttonState =
+                        (UdpSenderService.buttonState.toInt() or 0x01).toByte()
+                    return true
+                }
+                KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    UdpSenderService.buttonState =
+                        (UdpSenderService.buttonState.toInt() or 0x02).toByte()
+                    return true
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (volumeButtonsActive) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_VOLUME_UP -> {
+                    UdpSenderService.buttonState =
+                        (UdpSenderService.buttonState.toInt() and 0x01.inv()).toByte()
+                    return true
+                }
+                KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    UdpSenderService.buttonState =
+                        (UdpSenderService.buttonState.toInt() and 0x02.inv()).toByte()
+                    return true
+                }
+            }
+        }
+        return super.onKeyUp(keyCode, event)
     }
 }
 
@@ -149,9 +202,11 @@ fun WishImuApp(
     var sendOrientation by remember { mutableStateOf(prefs.getBoolean("send_orientation", true)) }
     var sendRaw by remember { mutableStateOf(prefs.getBoolean("send_raw", true)) }
     var mouseButtons by remember { mutableStateOf(prefs.getBoolean("mouse_buttons", false)) }
+    var volumeButtons by remember { mutableStateOf(prefs.getBoolean("volume_buttons", false)) }
     var selectedSampleRateIdx by remember { mutableIntStateOf(initialSampleRateIdx) }
     var isRunning by remember { mutableStateOf(UdpSenderService.started) }
     var showDebug by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var ipError  by remember { mutableStateOf<String?>(null) }
     var errorStr by remember { mutableStateOf<String?>(null) }
 
@@ -164,6 +219,8 @@ fun WishImuApp(
     var sampleRateExpanded by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val activity = context as? Activity
+
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* No-op: service works even if user denies */ }
@@ -184,6 +241,24 @@ fun WishImuApp(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Route volume keys to buttonState (not system volume) when running with volume buttons enabled
+    SideEffect {
+        MainActivity.volumeButtonsActive = volumeButtons && isRunning
+    }
+
+    // Show app over lock screen and keep screen on while volume buttons mode is active
+    LaunchedEffect(volumeButtons, isRunning) {
+        activity ?: return@LaunchedEffect
+        if (volumeButtons && isRunning) {
+            activity.setShowWhenLocked(true)
+            activity.setTurnScreenOn(true)
+            activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity.setShowWhenLocked(false)
+            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     // Polls UdpSenderService.debugError at 1 Hz while the service is running
@@ -222,7 +297,16 @@ fun WishImuApp(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("WishIMU") }) }
+        topBar = {
+            TopAppBar(
+                title = { Text("WishIMU") },
+                actions = {
+                    IconButton(onClick = { showSettings = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    }
+                }
+            )
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -400,7 +484,7 @@ fun WishImuApp(
                 )
             }
 
-            // Mouse click buttons — shown only when mouse buttons mode is enabled and running
+            // On-screen mouse click buttons — visible when mouse buttons mode is enabled and running
             AnimatedVisibility(visible = mouseButtons && isRunning) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -465,6 +549,50 @@ fun WishImuApp(
             }
 
             Spacer(Modifier.height(16.dp))
+        }
+    }
+
+    // Settings bottom sheet
+    if (showSettings) {
+        ModalBottomSheet(
+            onDismissRequest = { showSettings = false },
+            sheetState = rememberModalBottomSheetState()
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("Settings", style = MaterialTheme.typography.titleLarge)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+                        Text("Volume buttons", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Vol Up = Left Click · Vol Down = Right Click",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "App stays visible over lock screen while running",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = volumeButtons,
+                        onCheckedChange = {
+                            volumeButtons = it
+                            prefs.edit { putBoolean("volume_buttons", it) }
+                        }
+                    )
+                }
+            }
         }
     }
 }
