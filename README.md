@@ -146,8 +146,15 @@ Receives data from an Android phone over WiFi. Listens on UDP port 5555. Up to 1
 
 **Compatible apps:**
 
-- **WishIMU** (included in this repository under `WishIMU Compatible With FreePIE/`) — the recommended companion app, built for Android 9–16. Features: orientation + raw sensor streaming, on-screen Left Click / Right Click touch buttons, volume hardware buttons as mouse clicks (works over the lock screen). See [scripts/android.js](scripts/android.js) for the matching ps3pie script.
-- **FreePIE IMU sender** (legacy APK) — the original FreePIE companion app; compatible with the same protocol.
+- **WishIMU** (included in this repository under `WishIMU Compatible With FreePIE/`) — the recommended companion app, built for Android 9–16. Features: orientation + raw sensor streaming, on-screen Left Click / Right Click touch buttons, volume hardware buttons as mouse clicks.
+
+  **Lock screen behaviour:** when the screen is locked, Android routes volume keys through `VolumeProvider`, which provides a press/repeat signal but no key-up event. Hold duration cannot be detected on the lock screen — each press registers as a short (~100 ms) click. Hold works correctly when the screen is on (events are delivered via `onKeyDown`/`onKeyUp` with full timing precision).
+
+  **Connection detection:** ps3pie sends a 1-byte ack after every received packet. WishIMU monitors these acks and shows a "No response from host" warning in the notification and on-screen after 5 seconds without one — for example when ps3pie is not running or the script has stopped. The status clears automatically when acks resume.
+
+  See [scripts/android.js](scripts/android.js) for the matching ps3pie script.
+
+- **FreePIE IMU sender** (legacy APK) — the original FreePIE companion app; compatible with the same protocol. Does not send acks, so WishIMU will show "No response" after 5 s; data delivery is unaffected.
 
 ```js
 android[0].yaw          // radians — Euler Z (from SensorManager.getOrientation)
