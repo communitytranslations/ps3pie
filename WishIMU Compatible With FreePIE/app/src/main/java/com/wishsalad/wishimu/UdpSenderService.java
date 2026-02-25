@@ -426,13 +426,8 @@ public class UdpSenderService extends Service implements SensorEventListener {
         // For the lock-screen path, the session MUST be in STATE_PLAYING so that Android's
         // MediaSessionStack ranks it as the active session for volume key routing. A session
         // in STATE_STOPPED is excluded from the priority queue and never receives volume events.
-        // FLAG_HANDLES_MEDIA_BUTTONS is also set so that API 28-30 devices route keys here
-        // (deprecated since API 31 but harmless — it has no effect on newer devices).
         volumeButtonsEnabled = intent.getBooleanExtra("volumeButtons", false);
         mediaSession = new MediaSession(this, "WishIMU");
-        //noinspection deprecation
-        mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS);
-        mediaSession.setCallback(new MediaSession.Callback() {});  // required with FLAG_HANDLES_MEDIA_BUTTONS
         mediaSession.setPlaybackToRemote(new VolumeProvider(
                 VolumeProvider.VOLUME_CONTROL_RELATIVE, 15, 7) {
             @Override
