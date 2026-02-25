@@ -401,17 +401,18 @@ public class UdpSenderService extends Service implements SensorEventListener {
             @Override
             public void onAdjustVolume(int direction) {
                 if (volumeButtonsEnabled && direction != 0) {
-                    // Auto-release delay must exceed Android's key-repeat initial delay (~500 ms)
-                    // so the first key-repeat resets the timer before it fires.
-                    // 600 ms keeps the button held continuously while the key is held.
+                    // Short tap (100 ms): VolumeProvider has no key-up event, so hold
+                    // duration cannot be detected on the lock screen. A short tap avoids
+                    // accidental text selection. Hold works correctly via onKeyDown/onKeyUp
+                    // when the screen is on.
                     if (direction > 0) {  // VOLUME_ADJUST_RAISE = 1
                         buttonState.updateAndGet(b -> b | 0x01);
                         handler.removeCallbacks(releaseVolUp);
-                        handler.postDelayed(releaseVolUp, 600);
+                        handler.postDelayed(releaseVolUp, 100);
                     } else {              // VOLUME_ADJUST_LOWER = -1
                         buttonState.updateAndGet(b -> b | 0x02);
                         handler.removeCallbacks(releaseVolDown);
-                        handler.postDelayed(releaseVolDown, 600);
+                        handler.postDelayed(releaseVolDown, 100);
                     }
                 } else {
                     // Volume buttons mode is off — let the system adjust volume normally
