@@ -576,11 +576,6 @@ fun WishImuApp(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
-                            "App stays visible over lock screen while running",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                     Switch(
                         checked = volumeButtons,

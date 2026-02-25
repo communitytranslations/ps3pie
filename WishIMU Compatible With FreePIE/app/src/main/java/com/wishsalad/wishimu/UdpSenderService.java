@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.SocketTimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class UdpSenderService extends Service implements SensorEventListener {
@@ -47,6 +48,12 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
     /** Last worker error, readable by the Activity without binding. Null when OK. */
     public static volatile String debugError = null;
+
+    /** Ack-based connectivity: epoch ms of last ack received from pc, 0 if none yet. */
+    private volatile long lastAckTime = 0;
+    /** Epoch ms when the current connection attempt started (for the initial timeout). */
+    private volatile long connectionStartTime = 0;
+    private static final long ACK_TIMEOUT_MS = 5000;
 
     private final IBinder mBinder = new MyBinder();
     private PowerManager mPowerManager;
@@ -331,10 +338,49 @@ public class UdpSenderService extends Service implements SensorEventListener {
             while (running) {
                 try {
                     socket = new DatagramSocket();
-                    p.setAddress(InetAddress.getByName(ip));
+                    socket.setSoTimeout(1000); // lets the receiver thread wake up to check timeout
+                    final InetAddress targetAddr = InetAddress.getByName(ip);
+                    p.setAddress(targetAddr);
                     p.setPort(port);
+                    connectionStartTime = System.currentTimeMillis();
+                    lastAckTime = 0;
                     debugError = null;
                     updateNotification("→ " + ip + ":" + port, R.drawable.ic_notify);
+
+                    // Receiver thread: listens for 1-byte ack packets sent back by ps3pie.
+                    // On each ack: resets the connection-lost timer and clears any error.
+                    // On SocketTimeoutException (every 1 s): checks whether ACK_TIMEOUT_MS
+                    // has elapsed since the last ack (or since connect if none arrived yet).
+                    // Compatible with the original FreePIE app which sends no acks;
+                    // in that case the "No response" warning appears but data still flows.
+                    Thread receiver = new Thread(() -> {
+                        byte[] buf = new byte[4];
+                        DatagramPacket ackPkt = new DatagramPacket(buf, buf.length);
+                        while (running) {
+                            try {
+                                ackPkt.setLength(buf.length);
+                                socket.receive(ackPkt);
+                                if (targetAddr.equals(ackPkt.getAddress())) {
+                                    lastAckTime = System.currentTimeMillis();
+                                    if (debugError != null) {
+                                        debugError = null;
+                                        updateNotification("→ " + ip + ":" + port, R.drawable.ic_notify);
+                                    }
+                                }
+                            } catch (SocketTimeoutException ignored) {
+                                long now = System.currentTimeMillis();
+                                boolean noAckYet = lastAckTime == 0 && now - connectionStartTime > ACK_TIMEOUT_MS;
+                                boolean ackLost  = lastAckTime > 0  && now - lastAckTime       > ACK_TIMEOUT_MS;
+                                if ((noAckYet || ackLost) && debugError == null) {
+                                    setLastError("No response from host");
+                                }
+                            } catch (IOException e) {
+                                break; // socket closed or real error — exit cleanly
+                            }
+                        }
+                    });
+                    receiver.setDaemon(true);
+                    receiver.start();
 
                     while (running) {
                         synchronized (this) {

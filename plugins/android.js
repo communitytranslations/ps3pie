@@ -15,6 +15,12 @@
 //                   floatLE     : roll  (Euler Y) — radians
 //   byte  N     : button bitmask (only if flag 0x04; bit 0 = fire/left-click)
 //
+// Ack (PC → Android, sent after every received packet):
+//   byte  0     : 0x01
+// The WishIMU app uses these acks to detect when the script stops running.
+// The original FreePIE app does not send acks; WishIMU will show "No response"
+// after 5 s but data delivery is unaffected.
+//
 // Usage in scripts:
 //   const phone = android[0];     // device index 0
 //   phone.yaw, phone.pitch, phone.roll          // orientation (radians)
@@ -70,7 +76,7 @@ class AndroidPlugin extends Plugin {
 
     async start() {
         this._socket = dgram.createSocket('udp4');
-        this._socket.on('message', (msg) => this._onMessage(msg));
+        this._socket.on('message', (msg, rinfo) => this._onMessage(msg, rinfo));
         this._socket.on('error',   (err) => console.warn(`[android] UDP error: ${err.message}`));
         await new Promise(resolve => {
             this._socket.once('error', err => {
@@ -85,7 +91,7 @@ class AndroidPlugin extends Plugin {
         });
     }
 
-    _onMessage(msg) {
+    _onMessage(msg, rinfo) {
         if (msg.length < 2) return;
         const idx   = msg[0];
         const flags = msg[1];
@@ -122,6 +128,11 @@ class AndroidPlugin extends Plugin {
         }
 
         this._emitter.emit('data');
+
+        // Send 1-byte ack so the WishIMU app can detect when this script stops.
+        // Silently ignored if the socket is closed or if BIND_HOST prevents routing
+        // to the sender (e.g. loopback-only testing with PS3PIE_BIND_HOST=127.0.0.1).
+        if (this._socket) this._socket.send(Buffer.from([0x01]), rinfo.port, rinfo.address);
     }
 
     async stop() {
