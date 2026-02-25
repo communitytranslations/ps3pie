@@ -395,6 +395,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
         // in STATE_STOPPED is excluded from the priority queue and never receives volume events.
         volumeButtonsEnabled = intent.getBooleanExtra("volumeButtons", false);
         mediaSession = new MediaSession(this, "WishIMU");
+        configureMediaSessionFlags();   // deprecated API scoped to its own method
         mediaSession.setPlaybackToRemote(new VolumeProvider(
                 VolumeProvider.VOLUME_CONTROL_RELATIVE, 15, 7) {
             @Override
@@ -429,6 +430,20 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
         started = true;
         return START_STICKY;
+    }
+
+    /**
+     * Sets FLAG_HANDLES_MEDIA_BUTTONS and an empty Callback on the MediaSession.
+     * Both are deprecated since API 31 ("has no effect") but in practice some OEM firmware
+     * and older Android builds (API 28-30) still check them when deciding which session
+     * receives volume key events on the lock screen.  Keeping them avoids a regression on
+     * those devices.  The @SuppressWarnings is scoped to this method so the rest of the
+     * class is not affected.
+     */
+    @SuppressWarnings("deprecation")
+    private void configureMediaSessionFlags() {
+        mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS);
+        mediaSession.setCallback(new MediaSession.Callback() {});
     }
 
     /**
