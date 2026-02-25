@@ -347,40 +347,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
                     debugError = null;
                     updateNotification("→ " + ip + ":" + port, R.drawable.ic_notify);
 
-                    // Receiver thread: listens for 1-byte ack packets sent back by ps3pie.
-                    // On each ack: resets the connection-lost timer and clears any error.
-                    // On SocketTimeoutException (every 1 s): checks whether ACK_TIMEOUT_MS
-                    // has elapsed since the last ack (or since connect if none arrived yet).
-                    // Compatible with the original FreePIE app which sends no acks;
-                    // in that case the "No response" warning appears but data still flows.
-                    Thread receiver = new Thread(() -> {
-                        byte[] buf = new byte[4];
-                        DatagramPacket ackPkt = new DatagramPacket(buf, buf.length);
-                        while (running) {
-                            try {
-                                ackPkt.setLength(buf.length);
-                                socket.receive(ackPkt);
-                                if (targetAddr.equals(ackPkt.getAddress())) {
-                                    lastAckTime = System.currentTimeMillis();
-                                    if (debugError != null) {
-                                        debugError = null;
-                                        updateNotification("→ " + ip + ":" + port, R.drawable.ic_notify);
-                                    }
-                                }
-                            } catch (SocketTimeoutException ignored) {
-                                long now = System.currentTimeMillis();
-                                boolean noAckYet = lastAckTime == 0 && now - connectionStartTime > ACK_TIMEOUT_MS;
-                                boolean ackLost  = lastAckTime > 0  && now - lastAckTime       > ACK_TIMEOUT_MS;
-                                if ((noAckYet || ackLost) && debugError == null) {
-                                    setLastError("No response from host");
-                                }
-                            } catch (IOException e) {
-                                break; // socket closed or real error — exit cleanly
-                            }
-                        }
-                    });
-                    receiver.setDaemon(true);
-                    receiver.start();
+                    startAckReceiver(targetAddr, ip, port);
 
                     while (running) {
                         synchronized (this) {
@@ -462,6 +429,45 @@ public class UdpSenderService extends Service implements SensorEventListener {
 
         started = true;
         return START_STICKY;
+    }
+
+    /**
+     * Starts a daemon thread that listens for 1-byte ack packets sent back by ps3pie after
+     * each received IMU packet. On each ack, resets the connection-lost timer and clears any
+     * error. On SocketTimeoutException (every 1 s), checks whether ACK_TIMEOUT_MS has elapsed
+     * without an ack and sets a "No response from host" error if so.
+     * Compatible with the original FreePIE app which sends no acks; in that case the error
+     * appears after 5 s but data delivery is unaffected.
+     */
+    private void startAckReceiver(InetAddress targetAddr, String ip, int port) {
+        Thread receiver = new Thread(() -> {
+            byte[] buf = new byte[4];
+            DatagramPacket ackPkt = new DatagramPacket(buf, buf.length);
+            while (running) {
+                try {
+                    ackPkt.setLength(buf.length);
+                    socket.receive(ackPkt);
+                    if (targetAddr.equals(ackPkt.getAddress())) {
+                        lastAckTime = System.currentTimeMillis();
+                        if (debugError != null) {
+                            debugError = null;
+                            updateNotification("→ " + ip + ":" + port, R.drawable.ic_notify);
+                        }
+                    }
+                } catch (SocketTimeoutException ignored) {
+                    long now = System.currentTimeMillis();
+                    boolean noAckYet = lastAckTime == 0 && now - connectionStartTime > ACK_TIMEOUT_MS;
+                    boolean ackLost  = lastAckTime > 0  && now - lastAckTime       > ACK_TIMEOUT_MS;
+                    if ((noAckYet || ackLost) && debugError == null) {
+                        setLastError("No response from host");
+                    }
+                } catch (IOException e) {
+                    break; // socket closed or real error — exit cleanly
+                }
+            }
+        });
+        receiver.setDaemon(true);
+        receiver.start();
     }
 
     private byte getFlagByte(boolean raw, boolean orientation) {
