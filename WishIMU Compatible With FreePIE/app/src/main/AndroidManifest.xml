@@ -25,6 +25,26 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!--
+            AccessibilityService that intercepts volume key events system-wide.
+            Provides true ACTION_DOWN + ACTION_UP pairs regardless of foreground app,
+            fixing rapid-click detection when the screen is unlocked.
+            Must be enabled by the user in Settings → Accessibility → WishIMU.
+        -->
+        <service
+            android:name=".VolumeKeyService"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true">

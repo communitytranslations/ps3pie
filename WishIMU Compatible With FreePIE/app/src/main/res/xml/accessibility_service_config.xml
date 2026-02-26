@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    AccessibilityService configuration for VolumeKeyService.
+
+    canRequestFilterKeyEvents="true" is the critical flag: it enables
+    AccessibilityService.onKeyEvent() callbacks, which provide true
+    ACTION_DOWN + ACTION_UP pairs for hardware key events regardless of
+    which app is in the foreground — the same semantics as onKeyDown/onKeyUp
+    but active even when WishIMU is running in the background.
+
+    No accessibilityEventTypes are needed (we only intercept keys, not UI events),
+    but the attribute is required by the framework; typeWindowStateChanged is the
+    lightest possible value and imposes no measurable overhead.
+-->
+<accessibility-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/accessibility_service_description"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="0"
+    android:canRequestFilterKeyEvents="true" />

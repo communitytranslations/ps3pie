@@ -1,5 +1,6 @@
 *.iml
 .gradle
+.kotlin
 /local.properties
 /.idea/caches
 /.idea/libraries
@@ -12,7 +13,13 @@
 **/build/
 /captures
 .externalNativeBuild
-gradle/wrapper/dists/
-gradle/caches/
 gradle/.tmp/
 gradle/android/
+gradle/caches/
+gradle/daemon
+gradle/jdks
+gradle/kotlin-profile
+gradle/native
+gradle/workers
+gradle/wrapper/dists/
+gradle/gradle-daemon-jvm.properties

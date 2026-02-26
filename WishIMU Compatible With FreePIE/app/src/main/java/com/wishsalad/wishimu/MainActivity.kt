@@ -1,85 +1,118 @@
 package com.wishsalad.wishimu
 
 import android.Manifest
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.os.Build
-import androidx.core.content.edit
 import android.hardware.SensorManager
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import java.net.NetworkInterface
 import java.util.Locale
+
+/**
+ * Returns true if VolumeKeyService is enabled in Accessibility Settings.
+ * Checked on every Activity resume so the settings UI stays in sync.
+ */
+private fun isVolumeKeyServiceEnabled(ctx: Context): Boolean {
+    val am = ctx.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+    return am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+        .any {
+            it.resolveInfo.serviceInfo.packageName == ctx.packageName &&
+            it.resolveInfo.serviceInfo.name == VolumeKeyService::class.java.name
+        }
+}
 
 private fun getLocalIpAddress(): String {
     try {
@@ -95,13 +128,13 @@ private fun getLocalIpAddress(): String {
     return "—"
 }
 
-private data class SampleRateOption(val sensorDelayId: Int, val label: String)
+private data class SampleRateOption(val sensorDelayId: Int, val label: String, val shortLabel: String)
 
 private val SAMPLE_RATES = listOf(
-    SampleRateOption(SensorManager.SENSOR_DELAY_NORMAL,   "Slowest – 5 FPS"),
-    SampleRateOption(SensorManager.SENSOR_DELAY_UI,       "Average – 16 FPS"),
-    SampleRateOption(SensorManager.SENSOR_DELAY_GAME,     "Fast – 50 FPS"),
-    SampleRateOption(SensorManager.SENSOR_DELAY_FASTEST,  "Fastest – no delay")
+    SampleRateOption(SensorManager.SENSOR_DELAY_NORMAL,   "Slowest – 5 FPS",    "Slowest"),
+    SampleRateOption(SensorManager.SENSOR_DELAY_UI,       "Average – 16 FPS",   "Average"),
+    SampleRateOption(SensorManager.SENSOR_DELAY_GAME,     "Fast – 50 FPS",      "Fast"),
+    SampleRateOption(SensorManager.SENSOR_DELAY_FASTEST,  "Fastest – no delay", "Fastest")
 )
 
 class MainActivity : ComponentActivity() {
@@ -109,6 +142,22 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** True while volume buttons should route to buttonState instead of system volume. */
         @Volatile var volumeButtonsActive = false
+        /**
+         * True while this Activity is resumed (foreground or shown over lock screen).
+         * Read by VolumeKeyService to skip AccessibilityService interception when the
+         * Activity can already handle key events via onKeyDown/onKeyUp directly.
+         */
+        @Volatile var isInForeground = false
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isInForeground = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isInForeground = false
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -190,6 +239,7 @@ fun WishImuApp(
     onStart: (ip: String, port: Int, index: Int, sendOrientation: Boolean, sendRaw: Boolean, sampleRateId: Int, volumeButtons: Boolean) -> Unit,
     onStop: () -> Unit
 ) {
+    val context = LocalContext.current
     val savedSampleRateId = prefs.getInt("sample_rate", SensorManager.SENSOR_DELAY_FASTEST)
     val initialSampleRateIdx = SAMPLE_RATES.indexOfFirst { it.sensorDelayId == savedSampleRateId }.coerceAtLeast(0)
 
@@ -203,9 +253,12 @@ fun WishImuApp(
     var volumeButtons by remember { mutableStateOf(prefs.getBoolean("volume_buttons", false)) }
     var selectedSampleRateIdx by remember { mutableIntStateOf(initialSampleRateIdx) }
     var isRunning by remember { mutableStateOf(UdpSenderService.started) }
+    // isConnecting is only true during the ~5s ACK window after a fresh Start press
+    var isConnecting by remember { mutableStateOf(false) }
+    var accessibilityEnabled by remember { mutableStateOf(isVolumeKeyServiceEnabled(context)) }
     var showDebug by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
-    var ipError  by remember { mutableStateOf<String?>(null) }
+    var ipError by remember { mutableStateOf<String?>(null) }
     var errorStr by remember { mutableStateOf<String?>(null) }
 
     var accStr by remember { mutableStateOf("") }
@@ -214,10 +267,22 @@ fun WishImuApp(
     var imuStr by remember { mutableStateOf("") }
 
     var indexExpanded by remember { mutableStateOf(false) }
-    var sampleRateExpanded by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
     val activity = context as? Activity
+
+    // Animated color for the Start/Stop button
+    val buttonColor by animateColorAsState(
+        targetValue = if (isRunning) MaterialTheme.colorScheme.error
+                      else MaterialTheme.colorScheme.primary,
+        label = "startStopColor"
+    )
+
+    // Interaction sources for mouse buttons — kept outside AnimatedVisibility
+    // so press/release state is always tracked and cleaned up properly
+    val leftSource = remember { MutableInteractionSource() }
+    val leftPressed by leftSource.collectIsPressedAsState()
+    val rightSource = remember { MutableInteractionSource() }
+    val rightPressed by rightSource.collectIsPressedAsState()
 
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -231,20 +296,25 @@ fun WishImuApp(
         }
     }
 
-    // Sync running state on every resume — picks up stops triggered from the notification
+    // Sync running state and accessibility status on every resume.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) isRunning = UdpSenderService.started
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isRunning = UdpSenderService.started
+                // Re-check in case the user just enabled/disabled the AccessibilityService
+                accessibilityEnabled = isVolumeKeyServiceEnabled(context)
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Route volume keys to buttonState instead of system volume when the feature is active.
-    // MainActivity.volumeButtonsActive covers the screen-ON case (onKeyDown intercepts keys).
-    // UdpSenderService.volumeButtonsEnabled covers the screen-OFF/locked case (MediaSession
-    // VolumeProvider intercepts keys at the audio routing level, before any Activity focus).
+    // When volumeButtons=true the MediaSession VolumeProvider intercepts volume keys at the
+    // AudioService level — both screen-ON and screen-OFF — before the event reaches onKeyDown.
+    // onKeyDown/onKeyUp in MainActivity are therefore fallback handlers for devices or ROM
+    // versions where the VolumeProvider does not intercept reliably with screen on.
     SideEffect {
         MainActivity.volumeButtonsActive = volumeButtons && isRunning
         UdpSenderService.volumeButtonsEnabled = volumeButtons && isRunning
@@ -263,11 +333,31 @@ fun WishImuApp(
         }
     }
 
-    // Polls UdpSenderService.debugError at 1 Hz while the service is running
+    // Clear connecting indicator if service stops (e.g. from notification "Stop" action)
+    LaunchedEffect(isRunning) {
+        if (!isRunning) isConnecting = false
+    }
+
+    // Auto-dismiss connecting indicator after ACK timeout (~5s) + safety buffer
+    LaunchedEffect(isConnecting) {
+        if (!isConnecting) return@LaunchedEffect
+        delay(5500)
+        isConnecting = false
+    }
+
+    // Polls service state at 1 Hz while running.
+    // Also detects external stops (notification "Stop" button): pulling down the notification
+    // shade does not trigger onPause/onResume on all devices, so the DisposableEffect above
+    // may never fire. This loop catches the stop within ~1 s regardless.
     LaunchedEffect(isRunning) {
         if (!isRunning) return@LaunchedEffect
         while (true) {
             delay(1000)
+            if (!UdpSenderService.started) {
+                isRunning = false
+                isConnecting = false
+                return@LaunchedEffect
+            }
             val err = UdpSenderService.debugError
             if (err != null) errorStr = err
             else if (errorStr != null) errorStr = null   // Reconnected successfully
@@ -298,11 +388,41 @@ fun WishImuApp(
         }
     }
 
+    // buttonState is updated via pointerInput(PointerEventPass.Initial) on each Button below.
+    // See the buttons themselves for the rationale.
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("WishIMU") },
                 actions = {
+                    // Spinner while waiting for first ACK after Start
+                    AnimatedVisibility(visible = isConnecting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .padding(horizontal = 8.dp)
+                                .size(24.dp)
+                                .semantics { contentDescription = "Connecting to host" },
+                            strokeWidth = 2.dp
+                        )
+                    }
+                    // Live badge once connection is established
+                    AnimatedVisibility(visible = isRunning && !isConnecting) {
+                        AssistChip(
+                            onClick = { },
+                            label = { Text("Live") },
+                            leadingIcon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                )
+                            },
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .semantics { contentDescription = "Service is running" }
+                        )
+                    }
                     IconButton(onClick = { showSettings = true }) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
@@ -319,6 +439,7 @@ fun WishImuApp(
         ) {
             Spacer(Modifier.height(4.dp))
 
+            // ImeAction.Next moves focus to Port field on keyboard "Next" tap
             OutlinedTextField(
                 value = ip,
                 onValueChange = { ip = it; ipError = null },
@@ -327,6 +448,7 @@ fun WishImuApp(
                 supportingText = ipError?.let { msg -> { Text(msg) } },
                 enabled = !isRunning,
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -337,13 +459,17 @@ fun WishImuApp(
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
 
+            // ImeAction.Done closes the keyboard when the user finishes entering the port
             OutlinedTextField(
                 value = port,
                 onValueChange = { port = it },
                 label = { Text("Port") },
                 enabled = !isRunning,
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done
+                ),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -352,8 +478,8 @@ fun WishImuApp(
                 onExpandedChange = { if (!isRunning) indexExpanded = it }
             ) {
                 OutlinedTextField(
-                    value = "Device index $selectedIndex",
-                    onValueChange = {},
+                    value = selectedIndex.toString(),
+                    onValueChange = { },
                     readOnly = true,
                     label = { Text("Device index") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = indexExpanded) },
@@ -378,64 +504,50 @@ fun WishImuApp(
                 }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = sendOrientation,
-                    onCheckedChange = { sendOrientation = it },
+            // FilterChips — more compact and touch-friendly than checkboxes;
+            // FlowRow wraps chips onto a second line on very narrow screens
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = sendOrientation,
+                    onClick = { if (!isRunning) sendOrientation = !sendOrientation },
+                    label = { Text("Orientation") },
                     enabled = !isRunning
                 )
-                Text("Send Orientation")
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = sendRaw,
-                    onCheckedChange = { sendRaw = it },
+                FilterChip(
+                    selected = sendRaw,
+                    onClick = { if (!isRunning) sendRaw = !sendRaw },
+                    label = { Text("Raw Data") },
                     enabled = !isRunning
                 )
-                Text("Send Raw")
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = mouseButtons,
-                    onCheckedChange = { mouseButtons = it },
+                FilterChip(
+                    selected = mouseButtons,
+                    onClick = { if (!isRunning) mouseButtons = !mouseButtons },
+                    label = { Text("Mouse Buttons") },
                     enabled = !isRunning
                 )
-                Text("Mouse buttons")
             }
 
-            ExposedDropdownMenuBox(
-                expanded = sampleRateExpanded,
-                onExpandedChange = { if (!isRunning) sampleRateExpanded = it }
-            ) {
-                OutlinedTextField(
-                    value = SAMPLE_RATES[selectedSampleRateIdx].label,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Sample rate") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sampleRateExpanded) },
-                    enabled = !isRunning,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                )
-                ExposedDropdownMenu(
-                    expanded = sampleRateExpanded,
-                    onDismissRequest = { sampleRateExpanded = false }
-                ) {
-                    SAMPLE_RATES.forEachIndexed { idx, option ->
-                        DropdownMenuItem(
-                            text = { Text(option.label) },
-                            onClick = {
-                                selectedSampleRateIdx = idx
-                                sampleRateExpanded = false
-                            }
-                        )
+            // SegmentedButton replaces the sample rate dropdown
+            Text(
+                text = "Sample Rate",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SAMPLE_RATES.forEachIndexed { idx, option ->
+                    SegmentedButton(
+                        selected = selectedSampleRateIdx == idx,
+                        onClick = { if (!isRunning) selectedSampleRateIdx = idx },
+                        shape = SegmentedButtonDefaults.itemShape(idx, SAMPLE_RATES.size),
+                        enabled = !isRunning
+                    ) {
+                        Text(option.shortLabel)
                     }
                 }
             }
 
+            // Start/Stop button — icon + animated color transition via expressive spring
             Button(
                 onClick = {
                     if (!isRunning) {
@@ -461,6 +573,7 @@ fun WishImuApp(
                             }
                             onStart(trimmedIp, portInt, selectedIndex, sendOrientation, sendRaw, sampleRateId, volumeButtons)
                             isRunning = true
+                            isConnecting = true  // Triggers progress spinner in topbar
                         }
                     } else {
                         UdpSenderService.buttonState.set(0)
@@ -468,12 +581,14 @@ fun WishImuApp(
                         isRunning = false
                     }
                 },
-                colors = if (isRunning)
-                    ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                else
-                    ButtonDefaults.buttonColors(),
+                colors = ButtonDefaults.buttonColors(containerColor = buttonColor),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                Icon(
+                    imageVector = if (isRunning) Icons.Default.Close else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
                 Text(if (isRunning) "Stop" else "Start")
             }
 
@@ -486,63 +601,112 @@ fun WishImuApp(
                 )
             }
 
-            // On-screen mouse click buttons — visible when mouse buttons mode is enabled and running
+            // On-screen mouse click buttons — visible when mouse buttons mode is enabled and running.
+            //
+            // buttonState is updated via pointerInput(PointerEventPass.Initial), which fires
+            // on the RAW pointer event BEFORE Compose does any gesture detection or recomposition.
+            // This bypasses the ~16 ms vsync frame delay that plagued LaunchedEffect(pressed) and
+            // interactions.collect — both still go through Compose's frame cycle before running.
+            //
+            // PointerEventPass.Initial → outer-to-inner: our modifier runs first, updates
+            // buttonState synchronously, then returns without consuming the event so the Button's
+            // own click/ripple handling still works normally for visual feedback.
+            //
+            // collectIsPressedAsState() + buttonColors still provide the color-change feedback
+            // one frame later — that delayed visual is acceptable; the data path is instant.
             AnimatedVisibility(visible = mouseButtons && isRunning) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Box(
+                    Button(
+                        onClick = { },
+                        interactionSource = leftSource,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (leftPressed) MaterialTheme.colorScheme.primary
+                                             else MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = if (leftPressed) MaterialTheme.colorScheme.onPrimary
+                                           else MaterialTheme.colorScheme.onPrimaryContainer
+                        ),
                         modifier = Modifier
                             .weight(1f)
                             .height(100.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.primary)
                             .pointerInput(Unit) {
-                                detectTapGestures(onPress = {
-                                    UdpSenderService.buttonState.updateAndGet { it or 0x01 }
-                                    tryAwaitRelease()
-                                    UdpSenderService.buttonState.updateAndGet { it and 0x01.inv() }
-                                })
-                            },
-                        contentAlignment = Alignment.Center
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        if (event.changes.any { it.pressed })
+                                            UdpSenderService.buttonState.updateAndGet { it or  0x01 }
+                                        else
+                                            UdpSenderService.buttonState.updateAndGet { it and 0x01.inv() }
+                                    }
+                                }
+                            }
+                            .semantics { contentDescription = "Left click — touch and hold to press" }
                     ) {
-                        Text("Left Click", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Left Click", fontWeight = FontWeight.Bold)
                     }
-                    Box(
+                    Button(
+                        onClick = { },
+                        interactionSource = rightSource,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (rightPressed) MaterialTheme.colorScheme.secondary
+                                             else MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = if (rightPressed) MaterialTheme.colorScheme.onSecondary
+                                           else MaterialTheme.colorScheme.onSecondaryContainer
+                        ),
                         modifier = Modifier
                             .weight(1f)
                             .height(100.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.secondary)
                             .pointerInput(Unit) {
-                                detectTapGestures(onPress = {
-                                    UdpSenderService.buttonState.updateAndGet { it or 0x02 }
-                                    tryAwaitRelease()
-                                    UdpSenderService.buttonState.updateAndGet { it and 0x02.inv() }
-                                })
-                            },
-                        contentAlignment = Alignment.Center
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        if (event.changes.any { it.pressed })
+                                            UdpSenderService.buttonState.updateAndGet { it or  0x02 }
+                                        else
+                                            UdpSenderService.buttonState.updateAndGet { it and 0x02.inv() }
+                                    }
+                                }
+                            }
+                            .semantics { contentDescription = "Right click — touch and hold to press" }
                     ) {
-                        Text("Right Click", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Right Click", fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = showDebug,
-                    onCheckedChange = { showDebug = it }
-                )
-                Text("Debug")
+            // Debug toggle — entire Row is the touch target (48dp+ height via padding),
+            // following M3 accessibility guidelines for switch list items
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = showDebug,
+                        onValueChange = { showDebug = it },
+                        role = Role.Switch
+                    )
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Debug", style = MaterialTheme.typography.bodyMedium)
+                // onCheckedChange = null: interaction handled by the Row's toggleable modifier
+                Switch(checked = showDebug, onCheckedChange = null)
             }
 
+            // Debug panel in a Card with monospace font for aligned sensor columns
             AnimatedVisibility(visible = showDebug) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Acc: $accStr")
-                    Text("Gyr: $gyrStr")
-                    Text("Mag: $magStr")
-                    Text("IMU: $imuStr")
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Acc: $accStr", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                        Text("Gyr: $gyrStr", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                        Text("Mag: $magStr", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                        Text("IMU: $imuStr", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
 
@@ -564,8 +728,20 @@ fun WishImuApp(
             ) {
                 Text("Settings", style = MaterialTheme.typography.titleLarge)
 
+                // Volume buttons row — entire Row is the touch target for M3 accessibility
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = volumeButtons,
+                            onValueChange = { newValue ->
+                                volumeButtons = newValue
+                                prefs.edit { putBoolean("volume_buttons", newValue) }
+                                UdpSenderService.volumeButtonsEnabled = newValue && isRunning
+                            },
+                            role = Role.Switch
+                        )
+                        .padding(vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -577,14 +753,39 @@ fun WishImuApp(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Switch(
-                        checked = volumeButtons,
-                        onCheckedChange = {
-                            volumeButtons = it
-                            prefs.edit { putBoolean("volume_buttons", it) }
-                            UdpSenderService.volumeButtonsEnabled = it && isRunning
+                    // onCheckedChange = null: interaction handled by the Row's toggleable modifier
+                    Switch(checked = volumeButtons, onCheckedChange = null)
+                }
+
+                // Accessibility service status — shown only when Volume buttons is on.
+                // VolumeKeyService provides true KEY_DOWN + KEY_UP events even when WishIMU
+                // is in the background (screen unlocked, game in foreground).  Without it,
+                // VolumeProvider is used as a fallback but rapid clicks may merge.
+                AnimatedVisibility(visible = volumeButtons) {
+                    if (accessibilityEnabled) {
+                        Text(
+                            text = "Key capture active — rapid clicks work in background",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "For fast clicks with screen unlocked: enable WishIMU in Accessibility Settings.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    context.startActivity(
+                                        Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                    )
+                                }
+                            ) {
+                                Text("Open Accessibility Settings")
+                            }
                         }
-                    )
+                    }
                 }
             }
         }

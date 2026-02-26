@@ -1,8 +1,8 @@
 <resources>
 
-    <string name="app_name">FreePIE IMU</string>
+    <string name="app_name">WishIMU</string>
     <string name="menu_settings">Settings</string>
-    <string name="title_activity_main">FreePIE IMU</string>
+    <string name="title_activity_main">WishIMU</string>
     <string name="target_ip">Target IP</string>
     <string name="target_port">Target port</string>
     <string name="start">Start</string>
@@ -14,5 +14,7 @@
     <string name="mag">Magnetometer</string>
     <string name="imu">Orientation</string>
     <string name="index">Index</string>
+
+    <string name="accessibility_service_description">Routes volume button presses as mouse clicks (Left = Vol Up, Right = Vol Down) when the Volume buttons feature is enabled, without changing the system volume.</string>
 
 </resources>

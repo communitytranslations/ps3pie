@@ -15,7 +15,6 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.media.AudioManager;
 import android.media.VolumeProvider;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
@@ -39,6 +38,24 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class UdpSenderService extends Service implements SensorEventListener {
     /** True while the service is running. Read by MainActivity.onResume() to sync UI state. */
     public static volatile boolean started = false;
+
+    /**
+     * Singleton reference used by VolumeKeyService (AccessibilityService) and other
+     * static callers to wake the worker thread for immediate UDP transmission.
+     * Set in onCreate(), cleared in onDestroy().
+     */
+    private static volatile UdpSenderService instance;
+
+    /**
+     * Wakes the sensor-data worker thread so it sends a UDP packet immediately,
+     * rather than waiting for the next sensor event (up to 20 ms at SENSOR_DELAY_GAME).
+     * Called by VolumeKeyService on every press and release for instant click transmission.
+     * Safe to call from any thread; no-op if the service is not running.
+     */
+    public static void wakeWorker() {
+        UdpSenderService svc = instance;
+        if (svc != null && svc.running) synchronized (svc) { svc.notifyAll(); }
+    }
 
     /** Latest sensor snapshot for debug display. Written under synchronized(instance), read by MainActivity Handler. */
     public static final float[] debugAcc = new float[3];
@@ -93,10 +110,11 @@ public class UdpSenderService extends Service implements SensorEventListener {
     private SensorManager sensorManager;
 
     private MediaSession mediaSession;
-    // Schedules button-release events when no key-up is available (VolumeProvider only gets press)
+    // Schedules button-release events when no key-up is available (VolumeProvider only gets press,
+    // used as a fallback when VolumeKeyService / AccessibilityService is not enabled by the user)
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable releaseVolUp   = () -> buttonState.updateAndGet(b -> b & ~0x01);
-    private final Runnable releaseVolDown = () -> buttonState.updateAndGet(b -> b & ~0x02);
+    private final Runnable releaseVolUp   = () -> { buttonState.updateAndGet(b -> b & ~0x01); wakeWorker(); };
+    private final Runnable releaseVolDown = () -> { buttonState.updateAndGet(b -> b & ~0x02); wakeWorker(); };
 
     private Thread worker;
     private volatile boolean running;
@@ -193,6 +211,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
     @Override
     public void onCreate() {
         super.onCreate();
+        instance = this;
         mPowerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         mWifiManager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -211,6 +230,7 @@ public class UdpSenderService extends Service implements SensorEventListener {
     @Override
     public void onDestroy() {
         stop();
+        instance = null;
         super.onDestroy();
     }
 
@@ -384,50 +404,57 @@ public class UdpSenderService extends Service implements SensorEventListener {
         // The timeout only fires if the process dies without calling onDestroy() (crash, OOM).
         wakeLock.acquire(4 * 60 * 60 * 1000L);
 
-        // MediaSession intercepts volume keys via VolumeProvider even on the lock screen.
-        // onKeyDown in MainActivity handles the screen-on case; this handles screen-off.
-        // VolumeProvider receives key-press events but NOT key-up, so each event schedules
-        // an auto-release 600 ms later; key-repeat events reset the timer, keeping the
-        // button held for as long as the physical key is held.
+        // MediaSession is only created when volume-buttons mode is requested.
+        // Creating it unconditionally (even with volumeButtonsEnabled=false) causes Android to
+        // display a persistent remote-volume slider overlay while the session is STATE_PLAYING,
+        // because setPlaybackToRemote() hijacks the system volume routing for the whole session.
+        // When the mode is off we skip the session entirely so normal system volume is unaffected.
         //
-        // For the lock-screen path, the session MUST be in STATE_PLAYING so that Android's
-        // MediaSessionStack ranks it as the active session for volume key routing. A session
-        // in STATE_STOPPED is excluded from the priority queue and never receives volume events.
+        // When active: VolumeProvider intercepts volume keys even on the lock screen.
+        // onKeyDown in MainActivity handles the screen-on case; this handles screen-off.
+        // VolumeProvider receives direction-only events (no key-up), so each event schedules
+        // a 30 ms auto-release without cancelling previous ones — rapid taps produce distinct
+        // short clicks. When screen is on and the Activity is foreground, onKeyDown/onKeyUp
+        // also fire and provide true press/release; the 30 ms timer fires harmlessly after.
+        //
+        // The session MUST be in STATE_PLAYING so Android's MediaSessionStack ranks it as the
+        // active session for volume key routing (STATE_STOPPED sessions are excluded).
         volumeButtonsEnabled = intent.getBooleanExtra("volumeButtons", false);
-        mediaSession = new MediaSession(this, "WishIMU");
-        configureMediaSessionFlags();   // deprecated API scoped to its own method
-        mediaSession.setPlaybackToRemote(new VolumeProvider(
-                VolumeProvider.VOLUME_CONTROL_RELATIVE, 15, 7) {
-            @Override
-            public void onAdjustVolume(int direction) {
-                if (volumeButtonsEnabled && direction != 0) {
-                    // Short tap (100 ms): VolumeProvider has no key-up event, so hold
-                    // duration cannot be detected on the lock screen. A short tap avoids
-                    // accidental text selection. Hold works correctly via onKeyDown/onKeyUp
-                    // when the screen is on.
-                    if (direction > 0) {  // VOLUME_ADJUST_RAISE = 1
+        if (volumeButtonsEnabled) {
+            mediaSession = new MediaSession(this, "WishIMU");
+            configureMediaSessionFlags();   // deprecated API scoped to its own method
+            mediaSession.setPlaybackToRemote(new VolumeProvider(
+                    VolumeProvider.VOLUME_CONTROL_RELATIVE, 15, 7) {
+                @Override
+                public void onAdjustVolume(int direction) {
+                    // VolumeProvider fallback: used only when VolumeKeyService
+                    // (AccessibilityService) is NOT enabled by the user.
+                    // When the AccessibilityService IS active it consumes volume key events
+                    // before they reach the AudioManager/VolumeProvider layer, so this code
+                    // is never reached in that case — no double-handling.
+                    //
+                    // Limitation: VolumeProvider only receives a direction (+1/-1), never a
+                    // KEY_UP event, so a 30 ms synthetic release is scheduled.  Rapid taps
+                    // faster than 30 ms still merge; the AccessibilityService path is the
+                    // proper fix.  This path handles the locked-screen / screen-off edge case
+                    // where the AccessibilityService may not receive key events on some ROMs.
+                    if (VolumeKeyService.isEnabled) return; // AccessibilityService handles it
+                    if (direction > 0) {  // VOLUME_ADJUST_RAISE = 1  →  Vol Up = bit 0
                         buttonState.updateAndGet(b -> b | 0x01);
-                        handler.removeCallbacks(releaseVolUp);
-                        handler.postDelayed(releaseVolUp, 100);
-                    } else {              // VOLUME_ADJUST_LOWER = -1
+                        wakeWorker();
+                        handler.postDelayed(releaseVolUp, 30);
+                    } else if (direction < 0) {  // VOLUME_ADJUST_LOWER = -1  →  Vol Down = bit 1
                         buttonState.updateAndGet(b -> b | 0x02);
-                        handler.removeCallbacks(releaseVolDown);
-                        handler.postDelayed(releaseVolDown, 100);
-                    }
-                } else {
-                    // Volume buttons mode is off — let the system adjust volume normally
-                    AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
-                    if (am != null) {
-                        am.adjustSuggestedStreamVolume(direction,
-                                AudioManager.USE_DEFAULT_STREAM_TYPE, AudioManager.FLAG_SHOW_UI);
+                        wakeWorker();
+                        handler.postDelayed(releaseVolDown, 30);
                     }
                 }
-            }
-        });
-        mediaSession.setPlaybackState(new PlaybackState.Builder()
-                .setState(PlaybackState.STATE_PLAYING, 0, 0)
-                .build());
-        mediaSession.setActive(true);
+            });
+            mediaSession.setPlaybackState(new PlaybackState.Builder()
+                    .setState(PlaybackState.STATE_PLAYING, 0, 0)
+                    .build());
+            mediaSession.setActive(true);
+        }
 
         started = true;
         return START_STICKY;
