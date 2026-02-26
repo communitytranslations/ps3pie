@@ -1,3 +1,21 @@
 .vscode
+.claude
 node_modules
 CLAUDE.md
+
+# Bubblewrap sandbox mount stubs (zero-byte anchor files created by Claude Code sandbox-runtime)
+/HEAD
+/objects
+/refs
+/hooks
+/config
+/.gitconfig
+/.gitmodules
+/.bashrc
+/.bash_profile
+/.zshrc
+/.zprofile
+/.profile
+/.ripgreprc
+/.mcp.json
+/.idea
